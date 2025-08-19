@@ -16,45 +16,35 @@ Log viewer
 ---
 
 ## Project Structure
->
->|-- app.py                # Flask web app
->
->|-- WSPR_Analytics.py     # Data processing and analysis logic
->
->|-- requirements.txt        # Python dependencies
->
->|-- static/                 # Static files (e.g., visualisation.png)
->
->|-- templates/              # HTML templates
->
->|-- logs/                   # Log files
->
->|-- data/                   # Downloaded CSV data
->
+
+*   `.` (Project Root)
+    *   `app.py`: Flask web app
+    *   `WSPR_Analytics.py`: Data processing and analysis logic
+    *   `requirements.txt`: Python dependencies
+    *   `static/`: Static files (e.g., visualisation.png)
+    *   `templates/`: HTML templates
+    *   `logs/`: Log files
+    *   `data/`: Downloaded CSV data
+
 
 ---
 
 ## Requirements
+
 The following Python packages are used:
 
->csv
->
->datetime
->
->flask
->
->logging
->
->os
->
->pandas
->
->requests
->
->sys
->
-
+Package	Description
+*   `csv`		Handles CSV file operations.
+*   `datetime`	Provides classes for working with dates and times.
+*   `flask`		Micro web framework for the app.py web application.
+*   `logging`	Flexible event logging system for applications.
+*   `os`		Provides a way of using operating system dependent functionality.
+*   `pandas`	Data structures and data analysis tools, used for WSPR_Analytics.py.
+*   `requests`	Elegant and simple HTTP library.
+*   `sys`		Provides access to system-specific parameters and functions.
+  
 ---
+
 
 ### Installation
 1. Clone the repository
