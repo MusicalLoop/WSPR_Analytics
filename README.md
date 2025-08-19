@@ -1,43 +1,91 @@
-# WSPR_Analytics
-**WSPR Analytics** is a standalone Python web application designed to retrieve WSPR (Weak Signal Propagation Reporter) data. You enter a Call Sign and time period, and it retrieves data from WSPR.live and displays it in a table for you to analyse. There is also an simple analyse option that provides some basic metrics.
-
-Provides a user-friendly interface to configure parameters, retrieve data from wspr.live, and display the results in a tabular format.
+## WSPR Analytics
+WSPR Analytics is a standalone Python web application designed to analyze WSPR (Weak Signal Propagation Reporter) data. It provides a user-friendly interface to configure parameters, retrieve data from wspr.live, and display results in a tabular format.
 
 ## Features
+Web interface built with Flask
+Configuration management with .ini and .conf files
+Data retrieval from WSPR API
+Analysis of signal propagation including:
+Spot counts
+Grid square statistics
+Distance binning
+Top and furthest stations
+Dark mode toggle
+Log viewer
 
-- Bootstrap-based web interface with dark mode toggle
-- Navigation menu with Configuration, Data, Analyse and Logs pages
-- Configuration page with:
-  - Transmitter Call Sign input (max 10 characters)
-  - Time period selection (default: 30 minutes)
-  - Top Stations - default 10: the number of top stations to display in the analysis page
-- Provides a defauly configuration in WSPR_Analytics.ini
-- Saves configuration to `WSPR_Analytics.conf` and reloads the last used entries
-- Executes `WSPR_Analytics.py` to fetch data from wspr.live
-- Saves data as `data/WSPR_Analytics.csv` - this provides a starting point for deeper analysis of your data
-- Displays the latest CSV data in a table on the Data page
-- Displays basic metrics on the Analysis page
+---
 
-## Prerequisites
+## Project Structure
+>
+>|-- app.py                # Flask web app
+>
+>|-- WSPR_Analytics.py     # Data processing and analysis logic
+>
+>|-- requirements.txt        # Python dependencies
+>
+>|-- static/                 # Static files (e.g., visualisation.png)
+>
+>|-- templates/              # HTML templates
+>
+>|-- logs/                   # Log files
+>
+>|-- data/                   # Downloaded CSV data
+>
 
-- Python 3.8 or higher
-- pip (Python package manager)
+---
 
-## Installation
+## Requirements
+The following Python packages are used:
 
-1. Clone or download the repository
-2. Create a virtual environment (optional)
-3. Install dependencies:
-   pip install flask requests
+>csv
+>
+>datetime
+>
+>flask
+>
+>logging
+>
+>os
+>
+>pandas
+>
+>requests
+>
+>sys
+>
 
-## Usage
+---
 
-1. Run the Flask app:
-   python app.py
+### Installation
+1. Clone the repository
+git clone https://github.com/yourusername/wspr-analytics.git
+cd wspr-analytics
+2. Create a virtual environment (optional but recommended)
 
-2. Open your browser and go to:
-   http://127.0.0.1:5000
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-3. Use the Configuration page to enter your call sign and select a time period.
-4. Click Submit to fetch data and view it on the Data page.
-5. Click Analyse to display basic metrics.
+3. Install dependencies
+
+   pip install -r requirements.txt
+
+4. Run the application
+
+   python "app 4.py"
+
+5. Then open your browser and go to http://127.0.0.1:5000.
+
+---
+
+## Configuration
+Default settings are stored in WSPR_Analytics.ini
+User-modified settings are saved in WSPR_Analytics.conf
+You can reset to defaults via the web interface
+
+---
+
+## Output
+Data is saved in data/WSPR_Analytics.csv
+
+Logs are written to logs/WSPR_Analytics.log
+
