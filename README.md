@@ -14,7 +14,7 @@ Provides a user-friendly interface to configure parameters, retrieve data from w
 - Provides a defauly configuration in WSPR_Analytics.ini
 - Saves configuration to `WSPR_Analytics.conf` and reloads the last used entries
 - Executes `WSPR_Analytics.py` to fetch data from wspr.live
-- Saves data as `data/WSPR_Analytics.csv`
+- Saves data as `data/WSPR_Analytics.csv` - this provides a starting point for deeper analysis of your data
 - Displays the latest CSV data in a table on the Data page
 - Displays basic metrics on the Analysis page
 
