@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Configuration</h2>
+<form method="post">
+    <div class="mb-3">
+        <label for="CallSign" class="form-label">Call Sign</label>
+        <input type="text" class="form-control" id="CallSign" name="CallSign" maxlength="10" value="{{ config['CallSign'] }}">
+    </div>
+    <div class="mb-3">
+        <label for="Period" class="form-label">Period</label>
+        <select class="form-select" id="Period" name="Period">
+        {% for p in periods %}
+            <option value="{{ p }}" {% if config['Period'] == p %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+        </select>
+    </div>
+    <hr>
+    <div class="mb-3">
+        <label for="TopStations" class="form-label">Top Stations</label>
+        <input type="number" class="form-control" id="TopStations" name="TopStations" maxlength="4" min="1" max="9999" value="{{ config['TopStations'] }}">
+    </div>
+    <button type="submit" name="submit" class="btn btn-primary">Submit</button>
+    <button type="submit" name="reset" class="btn btn-secondary">Reset</button>
+</form>
+{% endblock %}

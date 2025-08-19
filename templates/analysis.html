@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Analysis</h2>
+{% if error %}
+  <div class="alert alert-danger">{{ error }}</div>
+{% else %}
+  <pre>{{ summary_text }}</pre>
+
+  <h4>Distance Distribution</h4>
+  <table class="table table-bordered table-striped table-sm">
+    <thead>
+      <tr>
+        <th>Distance Range</th>
+        <th>Number of Spots</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in distance_table %}
+      <tr>
+        <td>{{ row["Distance Range"] }}</td>
+        <td>{{ row["Number of Spots"] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h4>Top Stations by Frequency (showing {{ top_stations_list|length }})</h4>
+  <table class="table table-bordered table-striped table-sm">
+    <thead>
+      <tr>
+        <th>Call Sign</th>
+        <th>Count</th>
+        <th>Grid</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in top_stations_list %}
+      <tr>
+        <td>{{ row["rx_sign"] }}</td>
+        <td>{{ row["Count"] }}</td>
+        <td>{{ row["Most_Common_Grid"] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h4>Furthest Stations by Distance (showing {{ top_stations_list|length }})</h4>
+  <table class="table table-bordered table-striped table-sm">
+    <thead>
+      <tr>
+        <th>Call Sign</th>
+        <th>Distance (km)</th>
+        <th>Grid</th>
+        <th>Count</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in furthest_stations_list %}
+      <tr>
+        <td>{{ row["rx_sign"] }}</td>
+        <td>{{ row["distance"] }}</td>
+        <td>{{ row["rx_loc"] }}</td>
+        <td>{{ row["Count"] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Data</h2>
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% elif data_rows %}
+<table class="table table-bordered table-striped table-sm">
+  <thead>
+    <tr>
+      {% for key in data_rows[0].keys() %}
+      <th>{{ key }}</th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in data_rows %}
+    <tr>
+      {% for value in row.values() %}
+      <td>{{ value }}</td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No data to display.</p>
+{% endif %}
+{% endblock %}

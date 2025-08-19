@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Visualisation</h2>
+<img src="{{ url_for('staticfiles', filename='visualisation.png') }}" alt="Visualisation" class="img-fluid">
+<p>{{ png_file }}</p>
+{% endblock %}
