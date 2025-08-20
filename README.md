@@ -53,17 +53,18 @@ cd wspr-analytics
 2. Create a virtual environment (optional but recommended)
 
    python -m venv venv
+   
    source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-3. Install dependencies
+4. Install dependencies
 
    pip install -r requirements.txt
 
-4. Run the application
+5. Run the application
 
    python "app.py"
 
-5. Then open your browser and go to http://127.0.0.1:5000.
+6. Then open your browser and go to http://127.0.0.1:5000.
 
 ---
 
