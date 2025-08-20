@@ -61,7 +61,7 @@ cd wspr-analytics
 
 4. Run the application
 
-   python "app 4.py"
+   python "app.py"
 
 5. Then open your browser and go to http://127.0.0.1:5000.
 
