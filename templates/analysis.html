@@ -24,7 +24,7 @@
 
   <div class="row">
     <div class="col-md-6 mb-4">
-        <!-- Average Distanace and spots per hour -->
+        <!-- Average Distance and spots per hour -->
         {{ macros.render_table_card(title="WSPR Distance Analysis per Hour", caption="WSPR distance analysis per hour per day.", headers=["Time", "Mean", "Min", "Max", "Spots"], rows=hourlyList, time_format="%d-%m-%Y %H:%M") }}
     </div>
 
@@ -51,7 +51,7 @@
   <div class="row">
       <div class="col-md-6 mb-4">
           <!-- Distance Distribution Card -->
-          {{ macros.render_table_card( title="Distance Distribution", caption="Distribution of WSPR spots across different distance ranges.", headers=["Distance Range", "Number of Spots"], rows=distanceBinList ) }}
+          {{ macros.render_table_card( title="Distance Distribution: Logarithmic Binning", caption="Distribution of WSPR spots across different distance ranges.", headers=["Distance Range", "Number of Spots"], rows=distanceBinList ) }}
       </div>
   </div>
 

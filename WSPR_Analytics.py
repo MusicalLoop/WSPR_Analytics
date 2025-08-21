@@ -29,21 +29,22 @@ import logging
 from logging.handlers import TimedRotatingFileHandler
 import pandas as pd
 from pyhamtools import Callinfo, LookupLib
-
+import numpy as np
 
 ## Constants ##
 
-DATA_DIR       = "data"
-RESOURCES_DIR  = "resources" 
-LOG_DIR        = "logs"
+DATA_DIR         = "data"
+RESOURCES_DIR    = "resources" 
+LOG_DIR          = "logs"
 
-DATAFILE_NAME  = "WSPR_Analytics"
-SUMMARY_NAME   = "WSPR_Summary"
-BINNING_NAME   = "WSPR_Graph"
-HOURLY_NAME    = "WSPR_Hourly"
-DISTANCES_NAME = "WSPR_Distances"
-CALLSIGNS_NAME = "WSPR_CallSigns"
-COUNTRIES_NAME = "WSPR_Countries"
+DATAFILE_NAME    = "WSPR_Analytics"
+SUMMARY_NAME     = "WSPR_Summary"
+BINNING_NAME     = "WSPR_Graph"
+LOG_BINNING_NAME = "WSPR_LogGraph"
+HOURLY_NAME      = "WSPR_Hourly"
+DISTANCES_NAME   = "WSPR_Distances"
+CALLSIGNS_NAME   = "WSPR_CallSigns"
+COUNTRIES_NAME   = "WSPR_Countries"
 
 FMT_TEXT    = "txt"
 FMT_CSV     = "csv"
@@ -343,6 +344,46 @@ def distanceBinning(Data):
     saveData(distance_table, BINNING_NAME, DATA_DIR, FMT_CSV)
     return distance_table
 
+###########################################
+
+def logarithmicBinning(Data, num_bins=8): # Can use qcut or cut on log-transformed data
+
+    logger.debug("logarithmicBinning")
+
+    # Apply logarithmic transformation (using log1p to handle distance = 0 if any)
+    Data['distance_log'] = np.log1p(Data['distance']) # log(1+x)
+
+    # Now apply equal-width binning to the log-transformed data
+    # Use pd.cut to create bins of equal width in the log-space
+    # You can also use pd.qcut on the log-transformed data if you want equal frequency in log-space
+    log_min = Data['distance_log'].min()
+    log_max = Data['distance_log'].max()
+    log_bins = np.linspace(log_min, log_max, num_bins + 1)
+    
+    Data['DistanceBin_Log'] = pd.cut(Data['distance_log'], bins=log_bins, right=False)
+
+    # Re-convert bin edges back to original km scale for labels
+    bin_labels = []
+    for interval in Data['DistanceBin_Log'].cat.categories:
+        lower = np.expm1(interval.left) # exp(x)-1 to reverse log1p
+        upper = np.expm1(interval.right)
+        bin_labels.append(f"{int(lower)}-{int(upper)} km")
+    
+    Data['DistanceBin_Log'] = pd.cut(Data['distance_log'], bins=log_bins, right=False, labels=bin_labels)
+
+    distance_counts = Data['DistanceBin_Log'].value_counts().sort_index()
+    distance_table = pd.DataFrame({
+        "Distance Range": distance_counts.index,
+        "Number of Spots": distance_counts.values
+    })
+    
+    logger.debug(f"logarithmicBinning: {distance_table}")
+    
+    saveData(distance_table, LOG_BINNING_NAME, DATA_DIR, FMT_CSV)
+    
+    return distance_table
+
+###########################################
 
 def getDistanceByHour(Data):
 
@@ -428,12 +469,13 @@ def analyseData(max_CallSigns=10):
         logger.debug("analyseData: File Read")
         logger.debug(f"DataFrame Columns: {df.columns.tolist()}")
 
-        summaryData  = getSummary(df)
-        distanceBins = distanceBinning(df)
-        distanceData = getDistantCallSigns(df, max_CallSigns)
-        callSignData = getCallSignCount(df, max_CallSigns)
-        countryData  = getCountries(df)
-        hourlyList   = getDistanceByHour(df)
+        summaryData   = getSummary(df)
+        #distanceBins = distanceBinning(df)
+        distanceBins  = logarithmicBinning(df)
+        distanceData  = getDistantCallSigns(df, max_CallSigns)
+        callSignData  = getCallSignCount(df, max_CallSigns)
+        countryData   = getCountries(df)
+        hourlyList    = getDistanceByHour(df)
         
         # Convert tables to lists of dicts for rendering in Jinja
         distanceBinList = distanceBins.to_dict(orient="records")
