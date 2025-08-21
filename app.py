@@ -179,6 +179,13 @@ def logs():
         year=datetime.datetime.now().year
     )
 
+@app.route('/export-data')
+def export_data():
+    file_path = "data/WSPR_Analytics.csv"
+    directory = os.path.dirname(file_path)
+    filename = os.path.basename(file_path)
+    return send_from_directory(directory, filename, as_attachment=True)
+
 def period_list():
     return [
         "10 minutes", "30 minutes", "1 hour", "3 hours", "6 hours", "12 hours", "24 hours", "48 hours", "72 hours"

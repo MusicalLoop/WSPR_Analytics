@@ -46,11 +46,17 @@
                 <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}">Configuration</a></li>
             </ul>
             {% endif %}
-            <form class="d-flex ms-auto" method="post" style="margin-right:1em;">
-                <button type="submit" name="dark_toggle" class="btn btn-outline-light">
-                    {% if dark_mode %}Light{% else %}Dark{% endif %}
-                </button>
-            </form>
+            <!-- Export and Dark/Light toggle buttons -->
+            <div class="d-flex ms-auto">
+                {% if request.endpoint == 'data' %} {# Check if the current endpoint is 'data' #}
+                <a href="{{ url_for('export_data') }}" class="btn btn-outline-light me-2">Export</a>
+                {% endif %}
+                <form method="post">
+                    <button type="submit" name="dark_toggle" class="btn btn-outline-light">
+                        {% if dark_mode %}Light{% else %}Dark{% endif %}
+                    </button>
+                </form>
+            </div>
         </div>
     </nav>
     <div class="container mt-4">
