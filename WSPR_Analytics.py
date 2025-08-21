@@ -26,36 +26,68 @@ from io import StringIO
 import requests
 from datetime import datetime, timedelta
 import logging
+from logging.handlers import TimedRotatingFileHandler
 import pandas as pd
+from pyhamtools import Callinfo, LookupLib
 
+
+## Constants ##
+
+DATA_DIR       = "data"
+RESOURCES_DIR  = "resources" 
+LOG_DIR        = "logs"
+
+DATAFILE_NAME  = "WSPR_Analytics"
+SUMMARY_NAME   = "WSPR_Summary"
+BINNING_NAME   = "WSPR_Graph"
+HOURLY_NAME    = "WSPR_Hourly"
+DISTANCES_NAME = "WSPR_Distances"
+CALLSIGNS_NAME = "WSPR_CallSigns"
+COUNTRIES_NAME = "WSPR_Countries"
+
+FMT_TEXT    = "txt"
+FMT_CSV     = "csv"
+FMT_JSON    = "json"
+
+CTY_FILE = os.path.join(RESOURCES_DIR, "cty.plist")
 
 ## Main Code ##
-LOG_DIR = "logs"
-os.makedirs(LOG_DIR, exist_ok=True)  # Ensure the log directory exists
+
+os.makedirs(LOG_DIR, exist_ok=True)        # Ensure the log directory exists
+os.makedirs(RESOURCES_DIR, exist_ok=True)  # Ensure the resources directory exists
+os.makedirs(DATA_DIR, exist_ok=True)       # Ensure the data directory exists
 
 LOG_FILE = os.path.join(LOG_DIR, "WSPR_Analytics.log")
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_FILE),
-        logging.StreamHandler()
-    ]
-)
 
-def parse_time_periodOld(period_str):
-    mapping = {
-        "10 minutes": timedelta(minutes=10),
-        "30 minutes": timedelta(minutes=30),
-        "1 hour": timedelta(hours=1),
-        "3 hours": timedelta(hours=3),
-        "6 hours": timedelta(hours=6),
-        "12 hours": timedelta(hours=12),
-        "24 hours": timedelta(hours=24),
-        "48 hours": timedelta(hours=48),
-        "72 hours": timedelta(hours=72)
-    }
-    return mapping.get(period_str, timedelta(minutes=30))
+
+# Create a formatter
+formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+
+# Create a TimedRotatingFileHandler for daily rotation
+# 'when'='midnight' rotates at midnight every day
+# 'backupCount'=3 keeps 3 previous log files (plus the current one)
+file_handler = TimedRotatingFileHandler(
+    filename=LOG_FILE,
+    when='midnight',
+    interval=1,  # Rotate every day
+    backupCount=3,
+    encoding='utf-8' # Specify encoding for the log file
+)
+file_handler.setFormatter(formatter)
+
+# Create a StreamHandler for console output
+stream_handler = logging.StreamHandler()
+stream_handler.setFormatter(formatter)
+
+# Get the root logger
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)  # Set the logging level
+
+# Add the handlers to the logger
+logger.addHandler(file_handler)
+logger.addHandler(stream_handler)
+
+
     
 def parse_time_period(time_period_str):
     """Parse a time period string like '10 minutes' into a timedelta."""
@@ -71,12 +103,77 @@ def parse_time_period(time_period_str):
     else:
         raise ValueError(f"Unknown time period unit: {unit}")
 
+
+
+def saveData(data, filename, directory="data", format="csv", **kwargs):
+    """
+    Saves data to a specified file in the given directory and format.
+
+    Args:
+        data: The data to save. Can be a Pandas DataFrame, a list of dictionaries,
+              or other data types that can be serialized to the specified format.
+        filename (str): The name of the file to save the data to (e.g., "summary").
+        directory (str, optional): The directory where the file will be saved.
+                                   Defaults to "data".
+        format (str, optional): The format to save the data in ("csv", "json", "txt").
+                                Defaults to "csv".
+        **kwargs: Additional keyword arguments to pass to the underlying
+                  saving function (e.g., index=False for DataFrames).
+    """
+    os.makedirs(directory, exist_ok=True)  # Create directory if it doesn't exist
+    file_path = os.path.join(directory, f"{filename}.{format}")
+
+    try:
+        if format == "csv":
+            if isinstance(data, pd.DataFrame):
+                data.to_csv(file_path, **kwargs)
+                logger.debug(f"DataFrame successfully saved to CSV: {file_path}")
+            elif isinstance(data, list) and all(isinstance(d, dict) for d in data):
+                # If it's a list of dictionaries, convert to DataFrame first for easier CSV saving
+                pd.DataFrame(data).to_csv(file_path, **kwargs)
+                logger.debug(f"List of dictionaries converted to DataFrame and saved to CSV: {file_path}")
+            else:
+                # Handle other iterable data as simple rows in CSV
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(data)
+                logger.debug(f"Generic data saved to CSV: {file_path}")
+
+        elif format == "json":
+            if isinstance(data, pd.DataFrame):
+                data.to_json(file_path, orient="records", indent=4, **kwargs) # orient="records" is common for list of dicts JSON
+                logger.debug(f"DataFrame successfully saved to JSON: {file_path}")
+            else:
+                with open(file_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=4, **kwargs)
+                logger.debug(f"Data successfully saved to JSON: {file_path}")
+
+        elif format == "txt":
+            with open(file_path, "w", encoding="utf-8") as f:
+                if isinstance(data, list):
+                    for item in data:
+                        f.write(str(item) + "\n")
+                else:
+                    f.write(str(data))
+            logger.debug(f"Data successfully saved to TXT: {file_path}")
+
+        else:
+            logger.warning(f"Unsupported format: {format}. Data not saved.")
+            return False, f"Unsupported format: {format}. Data not saved."
+        
+        return True, None
+
+    except Exception as e:
+        logger.error(f"Failed to save data to {file_path}: {e}")
+        return False, f"Failed to save data to {file_path}: {e}"
+
+
+
 def getData(call_sign, time_period_str):
-    logging.debug(f"Starting data fetch for Call Sign: {call_sign}, Time Period: {time_period_str}")
+    logger.debug(f"Starting data fetch for Call Sign: {call_sign}, Time Period: {time_period_str}")
     try:
         delta = parse_time_period(time_period_str)
     except Exception as e:
-        logging.error(f"Error parsing time period: {e}")
+        logger.error(f"Error parsing time period: {e}")
         return None, f"Error parsing time period: {e}"
 
     end_time = datetime.utcnow()
@@ -87,25 +184,17 @@ def getData(call_sign, time_period_str):
         f"http://wspr.live/wspr_downloader.php?"
         f"start={start_str}&end={end_str}&tx_sign={call_sign}&rx_sign=%&format=CSV"
     )
-    logging.debug(f"Query URL: {query_url}")
+    logger.debug(f"Query URL: {query_url}")
     try:
         response = requests.get(query_url)
         response.raise_for_status()
-        logging.debug("Data fetched successfully from API.")
+        logger.debug("Data fetched successfully from API.")
     except Exception as e:
-        logging.error(f"Failed to fetch data: {e}")
+        logger.error(f"Failed to fetch data: {e}")
         return None, f"Failed to fetch data: {e}"
 
-    os.makedirs("data", exist_ok=True)
-    filename = "data/WSPR_Analytics.csv"
-    try:
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(response.text)
-        logging.debug(f"Data saved to {filename}")
-    except Exception as e:
-        logging.error(f"Failed to save data to file: {e}")
-        return None, f"Failed to save data to file: {e}"
-
+    saveData(response.text, DATAFILE_NAME, DATA_DIR, FMT_CSV)
+    
     # Parse CSV and return as table data
     try:
         csv_file = StringIO(response.text)
@@ -115,105 +204,271 @@ def getData(call_sign, time_period_str):
             return None, "No data returned for this period and call sign."
         return data_rows, None
     except Exception as e:
-        logging.error(f"Failed to parse CSV: {e}")
+        logger.error(f"Failed to parse CSV: {e}")
         return None, f"Failed to parse CSV: {e}"
+   
+def getSummary(Data):
+
+    # Total number of spots using 'rx_sign'
+    
+    logger.debug("getSummary")
+    
+    total_spots = Data['rx_sign'].count()
+
+    logger.debug(f"Total Spots: {total_spots}")
+    
+    # Total number of unique spots using 'rx_sign'
+    unique_spots = Data['rx_sign'].nunique()
+    
+    logger.debug(f"Total Unique Spots: {unique_spots}")
+    
+    # Unique grid squares using 'rx_loc'
+    grid_6_digit = Data['rx_loc'].nunique()
+    grid_4_digit = Data['rx_loc'].apply(lambda x: str(x)[:4]).nunique()
 
 
-def analyseData(top_stations_count=10):
+    summary_list = [
+        {"label": "Total spots", "value": total_spots},
+        {"label": "Total unique spots", "value": unique_spots},
+        {"label": "Total unique grid squares (4 digits)", "value": grid_4_digit},
+        {"label": "Total unique grid squares (6 digits)", "value": grid_6_digit}
+    ]
+
+
+    saveData(summary_list, SUMMARY_NAME, DATA_DIR, FMT_CSV)
+	
+    return summary_list
+	
+
+def getDistantCallSigns(Data, max_records):
+
+    # Analyse and find the Call Signs furthest away.
+    
+    logger.debug("getDistantCallSigns")
+    
+    furthest_idx = Data.groupby('rx_sign')['distance'].idxmax()
+    furthest_spots = Data.loc[furthest_idx, ['rx_sign', 'rx_loc', 'distance']]
+    counts = Data['rx_sign'].value_counts().reset_index()
+    counts.columns = ['rx_sign', 'Count']
+    furthest_stations = (
+        furthest_spots
+        .merge(counts, on='rx_sign')
+        .sort_values(by='distance', ascending=False)
+        .head(max_records)
+    )
+
+    logger.debug("getDistances: {furthest_stations}")
+    
+    saveData(furthest_stations, DISTANCES_NAME, DATA_DIR, FMT_CSV)
+    
+    return furthest_stations
+
+def getCallSignCount(Data, max_records):
+
+    # Top Call Signs by frequency  - including Grid Reference
+
+    logger.debug("getCallSignCount")
+    
+    callSign_count= (
+        Data.groupby('rx_sign')
+        .agg(
+            Count=('rx_sign', 'size'),
+            gridRef=('rx_loc', lambda x: x.mode().iloc[0] if not x.mode().empty else '')
+        )
+        .reset_index()
+        .sort_values(by='Count', ascending=False)
+        .head(max_records)
+    )
+    
+    logger.debug(f"getCallSigns: {callSign_count}")
+    
+    saveData(callSign_count, CALLSIGNS_NAME, DATA_DIR, FMT_CSV)
+    return callSign_count
+        
+
+def get_country_safely(callsign, callinfo_obj):
+    if not callsign:
+        return 'Unknown'
     try:
-        #import pandas as pd
-        #import logging
+        call_data = callinfo_obj.get_all(callsign)
+        return call_data.get('country', 'Unknown')
+    except KeyError: # Catch KeyError, as this is what get_all raises for undecodable callsigns
+        return 'Unknown'
+        
+def getCountries(Data):
+    # Use Call Sign to get the Country, and then list the Countries and number of spots
+    
+    logger.debug(f"getCountries: City File: {CTY_FILE}")
+
+    # Check if the local file exists before trying to use it
+    if os.path.exists(CTY_FILE):
+        lookup = LookupLib(lookuptype="countryfile", filename=CTY_FILE)
+        logger.debug(f"Using local country file: {CTY_FILE}")
+    else:
+        logger.debug(f"Local country file not found at {CTY_FILE}. Attempting to download.")
+        lookup = LookupLib(lookuptype="countryfile") # This will download from the internet
+        logger.debug("Downloaded country file from the internet.")
+
+    callInfo = Callinfo(lookup)
+
+
+    # Add country column
+    Data['country'] = Data['rx_sign'].apply(lambda call: get_country_safely(call, callInfo))
+
+    # Create country spot count table
+    country_counts = Data['country'].value_counts().reset_index()
+    country_counts.columns = ['Country', 'Spots']
+    country_counts = country_counts.sort_values(by='Spots', ascending=False)
+
+    saveData(country_counts, COUNTRIES_NAME, DATA_DIR, FMT_CSV)
+    return country_counts
+
+def distanceBinning(Data):
+
+    logger.debug("distanceBinning")
+    
+    # Distance binning
+    num_bins = 8
+    Data['DistanceBin'] = pd.qcut(Data['distance'], q=num_bins)
+    bin_labels = [f"{int(interval.left)}-{int(interval.right)} km" for interval in Data['DistanceBin'].cat.categories]
+    Data['DistanceBin'] = pd.qcut(Data['distance'], q=num_bins, labels=bin_labels)
+    distance_counts = Data['DistanceBin'].value_counts().sort_index()
+    distance_table = pd.DataFrame({
+        "Distance Range": distance_counts.index,
+        "Number of Spots": distance_counts.values
+    })
+    
+    logger.debug(f"distanceBinning: {distance_table}")
+    
+    saveData(distance_table, BINNING_NAME, DATA_DIR, FMT_CSV)
+    return distance_table
+
+
+def getDistanceByHour(Data):
+
+    logger.debug("getDistanceByHour")
+
+    Data['Time'] = pd.to_datetime(Data['time'], format="%Y-%m-%d %H:%M:%S")
+
+    # Set 'Time' as the DataFrame's index for resampling
+    Data = Data.set_index('Time')
+
+    # Define the date range for the data
+    start_date = Data.index.min().floor('D')
+    end_date = Data.index.max().ceil('D') - pd.Timedelta(seconds=1)
+
+    # Create a complete hourly time range for the period
+    full_time_range = pd.date_range(start=start_date, end=end_date, freq='h')
+
+    # Resample the data by hour, calculate mean, min, max, and count of 'distance'
+    daily_hourly_stats = Data['distance'].resample('h').agg(['mean', 'min', 'max', 'count'])
+
+    # Reindex the DataFrame to ensure all hours within the date range are present
+    daily_hourly_stats = daily_hourly_stats.reindex(full_time_range)
+
+    # Rename the 'count' column for clarity (e.g., 'Spots')
+    daily_hourly_stats = daily_hourly_stats.rename(columns={'count': 'Spots'})
+
+    # Drop rows that contain any NaN values (i.e., hours with no data)
+    daily_hourly_stats = daily_hourly_stats.dropna()
+    
+    # Reset the index, which will move the current index (the datetime objects) into a new column.
+    # By default, this column is named 'index'.
+    daily_hourly_stats = daily_hourly_stats.reset_index()
+
+    # Rename the columns to start with uppercase as requested
+    daily_hourly_stats = daily_hourly_stats.rename(columns={
+        'index': 'Time',  # Renames the column previously 'index' to 'Time'
+        'mean': 'Mean',
+        'min': 'Min',
+        'max': 'Max'
+    })
+
+    # Round Mean
+    daily_hourly_stats['Mean'] = daily_hourly_stats['Mean'].round(2)
+    
+    # Convert 'Min', 'Max', and 'Spots' to integers
+    daily_hourly_stats['Min'] = daily_hourly_stats['Min'].astype(int)
+    daily_hourly_stats['Max'] = daily_hourly_stats['Max'].astype(int)
+    daily_hourly_stats['Spots'] = daily_hourly_stats['Spots'].astype(int) 
+    
+    logger.debug(f"getDistanceByHour: {daily_hourly_stats}")
+    
+    # Log the type of daily_hourly_stats here
+    logger.debug(f"Type of daily_hourly_stats before saving: {type(daily_hourly_stats)}")
+    
+    saveData(daily_hourly_stats, HOURLY_NAME, DATA_DIR, FMT_CSV)
+
+    # Convert DataFrame to a list of dictionaries for Jinja2 template rendering
+    hourly_list_for_template = daily_hourly_stats.to_dict('records')
+
+    # Log the type of hourly_list_for_template here
+    logger.debug(f"Type of hourly_list_for_template (after conversion): {type(hourly_list_for_template)}")
+
+    logger.debug(f"Returning data for template: {hourly_list_for_template}")
+
+    return hourly_list_for_template
+
+
+def analyseData(max_CallSigns=10):
+
+    logger.debug("analyseData")
+    
+    try:
 
         # Load the CSV file
-        df = pd.read_csv("data/WSPR_Analytics.csv")
+        logger.debug("analyseData: Loading CSV file")
+        
+        file_path = os.path.join(DATA_DIR, f"{DATAFILE_NAME}.{FMT_CSV}") 
 
-        # Debug
-        #logging.info("Head: {df.head()}")
-        #logging.info("Columns: {df.columns}")
-        #logging.info("Shape: {df.shape}")
+        logger.debug(f"analyseData: File Path: {file_path}")
 
-        # Total number of spots using 'rx_sign'
-        total_spots = df['rx_sign'].count()
+        df = pd.read_csv(file_path) 
 
-        # Total number of unique spots using 'rx_sign'
-        unique_spots = df['rx_sign'].nunique()
+        logger.debug("analyseData: File Read")
+        logger.debug(f"DataFrame Columns: {df.columns.tolist()}")
 
-        # Unique grid squares using 'rx_loc'
-        grid_6_digit = df['rx_loc'].nunique()
-        grid_4_digit = df['rx_loc'].apply(lambda x: str(x)[:4]).nunique()
-
-        # Distance binning
-        num_bins = 8
-        df['DistanceBin'] = pd.qcut(df['distance'], q=num_bins)
-        bin_labels = [f"{int(interval.left)}-{int(interval.right)} km" for interval in df['DistanceBin'].cat.categories]
-        df['DistanceBin'] = pd.qcut(df['distance'], q=num_bins, labels=bin_labels)
-        distance_counts = df['DistanceBin'].value_counts().sort_index()
-        distance_table = pd.DataFrame({
-            "Distance Range": distance_counts.index,
-            "Number of Spots": distance_counts.values
-        })
-
-        # Top stations by frequency and most common grid
-        top_station_freq = (
-            df.groupby('rx_sign')
-            .agg(
-                Count=('rx_sign', 'size'),
-                Most_Common_Grid=('rx_loc', lambda x: x.mode().iloc[0] if not x.mode().empty else '')
-            )
-            .reset_index()
-            .sort_values(by='Count', ascending=False)
-            .head(top_stations_count)
-        )
-
-        # Furthest stations by distance (with their grid at max distance, and count)
-        furthest_idx = df.groupby('rx_sign')['distance'].idxmax()
-        furthest_spots = df.loc[furthest_idx, ['rx_sign', 'rx_loc', 'distance']]
-        counts = df['rx_sign'].value_counts().reset_index()
-        counts.columns = ['rx_sign', 'Count']
-        furthest_stations = (
-            furthest_spots
-            .merge(counts, on='rx_sign')
-            .sort_values(by='distance', ascending=False)
-            .head(top_stations_count)
-        )
-
-        # Prepare summary text
-        summary_text = (
-            f"Total number of spots (rx_sign): {total_spots}\n"
-            f"Total number of unique spots (rx_sign): {unique_spots}\n"
-            f"Number of unique grid squares (4 digits from rx_loc): {grid_4_digit}\n"
-            f"Number of unique grid squares (6 digits from rx_loc): {grid_6_digit}\n"
-        )
-
-        # Debug
-        logging.debug(top_station_freq)
-        logging.debug(furthest_stations)
+        summaryData  = getSummary(df)
+        distanceBins = distanceBinning(df)
+        distanceData = getDistantCallSigns(df, max_CallSigns)
+        callSignData = getCallSignCount(df, max_CallSigns)
+        countryData  = getCountries(df)
+        hourlyList   = getDistanceByHour(df)
         
         # Convert tables to lists of dicts for rendering in Jinja
-        distance_table_list = distance_table.to_dict(orient="records")
-        top_stations_list = top_station_freq.to_dict(orient="records")
-        furthest_stations_list = furthest_stations.to_dict(orient="records")
+        distanceBinList = distanceBins.to_dict(orient="records")
+        callSignList    = callSignData.to_dict(orient="records")
+        distanceList    = distanceData.to_dict(orient="records")
+        countryList     = countryData.to_dict(orient="records")
+        
+        logger.debug("analyseData: hourlyList")
+        #hourlyList      = hourlyData.to_dict(orient="records")
 
         # Debug
-        logging.debug(distance_table_list)
-        logging.debug(top_stations_list)
-        logging.debug(furthest_stations_list)
+        #logger.debug(f"Summary metrics: {summaryData}")
+        #logger.debug(f"Distance Graph: {distanceBinList}")
+        #logger.debug(f"Call Sign List: {callSignList}")
+        #logger.debug(f"Distance List: {distanceList}")
+        #logger.debug(f"Country List: {countryList}")
+        #logger.debug(f"Hourly Stats: {hourlyData}")
 
-        logging.info("analyseData completed successfully.")
-        return summary_text, distance_table_list, top_stations_list, furthest_stations_list, None
+        logger.info("analyseData completed successfully.")
+        return summaryData, distanceBinList, callSignList, distanceList, countryList, hourlyList, None
     except Exception as e:
-        logging.error(f"Error in analyseData: {e}")
-        return None, None, None, None, f"Error in analyseData: {e}"
+        logger.error(f"Error in analyseData: {e}")
+        return None, None, None, None, None, None, f"Error in analyseData: {e}"
+
+
 
 def visualiseData():
     try:
         png_path = "static/visualisation.png"
-        logging.info(f"visualiseData called. Expected PNG: {png_path}")
+        logger.info(f"visualiseData called. Expected PNG: {png_path}")
         # Simulate: generate PNG and return path
         if not os.path.exists(png_path):
-            logging.warning(f"Expected PNG file does not exist: {png_path}")
-        logging.info(f"visualiseData result: {png_path}")
+            logger.warning(f"Expected PNG file does not exist: {png_path}")
+        logger.info(f"visualiseData result: {png_path}")
         return png_path
     except Exception as e:
-        logging.error(f"Error in visualiseData: {e}")
+        logger.error(f"Error in visualiseData: {e}")
         return f"Error in visualiseData: {e}"

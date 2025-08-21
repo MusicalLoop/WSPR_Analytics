@@ -1,0 +1,37 @@
+{# _macros.html #}
+
+{% macro render_table_card(title, caption, headers, rows, time_format=None) %}
+<div class="card h-100 shadow-sm">
+    <div class="card-header">
+        <h4 class="mb-0">{{ title }}</h4>
+    </div>
+    <div class="card-body">
+        <table class="table table-bordered table-striped table-sm mb-0">
+            <caption>{{ caption }}</caption>
+            <thead>
+                <tr>
+                    {% for header in headers %}
+                    <th {% if loop.index > 1 %}class="text-end"{% endif %}>{{ header }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    {% for key, value in row.items() %}
+                    {# Handle special formatting for 'distance' and 'time' if needed #}
+                    {% if key == 'distance' %}
+                    <td class="text-end">{{ "{:,.0f}".format(value) }}</td>
+                    {% elif key == 'time' and time_format %}
+                    <td>{{ value.strftime(time_format) }}</td>
+                    {% else %}
+                    <td {% if not loop.first %}class="text-end"{% endif %}>{{ value }}</td>
+                    {% endif %}
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endmacro %}

@@ -72,7 +72,9 @@ def data():
         if 'dark_toggle' in request.form:
             session['dark_mode'] = not dark_mode
             return redirect(request.url)
+            
     data_rows, error = WSPR_Analytics.getData(config['CallSign'], config['Period'])
+    
     return render_template(
         'data.html',
         data_rows=data_rows,
@@ -96,14 +98,42 @@ def analysis():
         top_stations_count = int(config.get('TopStations', 10))
     except Exception:
         top_stations_count = 10
-    summary_text, distance_table, top_stations, furthest_stations, error = WSPR_Analytics.analyseData(top_stations_count)
+    summaryData, distanceBinList, callSignList, distanceList, countryList, hourlyList, error = WSPR_Analytics.analyseData(top_stations_count)
+    
+    # --- Define your mapping dictionaries here in Python ---
+    hourly_header_map = {
+        'Time': 'Time', # Data key: 'time', Display header: 'Time'
+        'Mean': 'Mean',
+        'Min': 'Min',
+        'Max': 'Max',
+        'Spots': 'Spots'
+    }
+
+    call_sign_header_map = {
+        'rx_sign': 'Call Sign',
+        'Count': 'Count',
+        'gridRef': 'Grid'
+    }
+
+    distance_header_map = {
+        'rx_sign': 'Call Sign',
+        'distance': 'Distance (km)',
+        'rx_loc': 'Grid',
+        'Count': 'Count'
+    }    
     
     return render_template(
         'analysis.html',
-        summary_text=summary_text,
-        distance_table=distance_table,
-        top_stations_list=top_stations,
-        furthest_stations_list=furthest_stations,
+        summaryData=summaryData,
+        distanceBinList=distanceBinList,
+        callSignList=callSignList,
+        distanceList=distanceList,
+        countryList=countryList,
+        hourlyList=hourlyList,
+        # --- Pass the mapping dictionaries to the template ---
+        hourly_header_map=hourly_header_map,
+        call_sign_header_map=call_sign_header_map,
+        distance_header_map=distance_header_map,
         error=error,
         dark_mode=dark_mode,
         show_menu=True,
@@ -120,7 +150,12 @@ def visualise():
             session['dark_mode'] = not dark_mode
             return redirect(request.url)
     png_path = WSPR_Analytics.visualiseData()
-    return render_template('visualise.html', png_file=png_path, dark_mode=dark_mode, show_menu=True, year=datetime.datetime.now().year)
+    return render_template(
+        'visualise.html', 
+        png_file=png_path, 
+        dark_mode=dark_mode, 
+        show_menu=True, 
+        year=datetime.datetime.now().year)
 
 @app.route('/static/<path:filename>')
 def staticfiles(filename):
@@ -146,7 +181,7 @@ def logs():
 
 def period_list():
     return [
-        "10 minutes", "30 minutes", "1 hour", "3 hours", "6 hours", "12 hours", "24 hours", "72 hours"
+        "10 minutes", "30 minutes", "1 hour", "3 hours", "6 hours", "12 hours", "24 hours", "48 hours", "72 hours"
     ]
 
 if __name__ == '__main__':
