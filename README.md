@@ -34,7 +34,12 @@ Provides a user-friendly interface to configure parameters, retrieve data from w
 1. Clone or download the repository
 2. (Optional) Create a virtual environment (optional)
 3. Install dependencies:
-   pip install flask requests
+   
+   pip install flask requests pandas pyhamtools
+
+   or
+   
+   pip install -r requirements.txt
 
 ## Usage
 
