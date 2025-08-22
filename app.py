@@ -88,18 +88,29 @@ def data():
 def analysis():
     if not session.get('config_saved', False):
         return redirect(url_for('index'))
+    
     config = load_config(CONFIG_FILE)
+
     dark_mode = session.get('dark_mode', False)
+
     if request.method == 'POST':
         if 'dark_toggle' in request.form:
             session['dark_mode'] = not dark_mode
             return redirect(request.url)
+ 
+    summaryData, distanceBinList, callSignList, distanceList, countryList, hourlyList, error = WSPR_Analytics.analyseData()
+
     try:
         top_stations_count = int(config.get('TopStations', 10))
     except Exception:
         top_stations_count = 10
-    summaryData, distanceBinList, callSignList, distanceList, countryList, hourlyList, error = WSPR_Analytics.analyseData(top_stations_count)
-    
+
+    # Apply row limit if TopStations > 0
+    if top_stations_count > 0:
+        callSignList = callSignList[:top_stations_count]
+        distanceList = distanceList[:top_stations_count]
+
+
     # --- Define your mapping dictionaries here in Python ---
     hourly_header_map = {
         'Time': 'Time', # Data key: 'time', Display header: 'Time'
@@ -188,7 +199,7 @@ def export_data():
 
 def period_list():
     return [
-        "10 minutes", "30 minutes", "1 hour", "3 hours", "6 hours", "12 hours", "24 hours", "48 hours", "72 hours"
+        "10 minutes", "30 minutes", "1 hour", "3 hours", "6 hours", "12 hours", "1 day", "2 days", "3 days", "5 days", "7 days", "14 days"
     ]
 
 if __name__ == '__main__':

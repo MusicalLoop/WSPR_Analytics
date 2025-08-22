@@ -12,9 +12,6 @@
 ##   results in a tabular format.                                  ##
 ##                                                                 ##
 #####################################################################
-##   Version: 0.1  Original draft                                  ##
-##                                                                 ##
-#####################################################################
 
 # -*- coding: utf-8 -*-
  
@@ -241,21 +238,24 @@ def getSummary(Data):
     return summary_list
 	
 
-def getDistantCallSigns(Data, max_records):
+def getDistantCallSigns(Data):
 
     # Analyse and find the Call Signs furthest away.
     
     logger.debug("getDistantCallSigns")
     
     furthest_idx = Data.groupby('rx_sign')['distance'].idxmax()
+
     furthest_spots = Data.loc[furthest_idx, ['rx_sign', 'rx_loc', 'distance']]
+
     counts = Data['rx_sign'].value_counts().reset_index()
+
     counts.columns = ['rx_sign', 'Count']
+
     furthest_stations = (
         furthest_spots
         .merge(counts, on='rx_sign')
         .sort_values(by='distance', ascending=False)
-        .head(max_records)
     )
 
     logger.debug("getDistances: {furthest_stations}")
@@ -264,7 +264,7 @@ def getDistantCallSigns(Data, max_records):
     
     return furthest_stations
 
-def getCallSignCount(Data, max_records):
+def getCallSignCount(Data):
 
     # Top Call Signs by frequency  - including Grid Reference
 
@@ -278,12 +278,12 @@ def getCallSignCount(Data, max_records):
         )
         .reset_index()
         .sort_values(by='Count', ascending=False)
-        .head(max_records)
     )
     
     logger.debug(f"getCallSigns: {callSign_count}")
     
     saveData(callSign_count, CALLSIGNS_NAME, DATA_DIR, FMT_CSV)
+
     return callSign_count
         
 
@@ -344,8 +344,6 @@ def distanceBinning(Data):
     saveData(distance_table, BINNING_NAME, DATA_DIR, FMT_CSV)
     return distance_table
 
-###########################################
-
 def logarithmicBinning(Data, num_bins=8): # Can use qcut or cut on log-transformed data
 
     logger.debug("logarithmicBinning")
@@ -383,7 +381,6 @@ def logarithmicBinning(Data, num_bins=8): # Can use qcut or cut on log-transform
     
     return distance_table
 
-###########################################
 
 def getDistanceByHour(Data):
 
@@ -451,7 +448,7 @@ def getDistanceByHour(Data):
     return hourly_list_for_template
 
 
-def analyseData(max_CallSigns=10):
+def analyseData():
 
     logger.debug("analyseData")
     
@@ -472,8 +469,8 @@ def analyseData(max_CallSigns=10):
         summaryData   = getSummary(df)
         #distanceBins = distanceBinning(df)
         distanceBins  = logarithmicBinning(df)
-        distanceData  = getDistantCallSigns(df, max_CallSigns)
-        callSignData  = getCallSignCount(df, max_CallSigns)
+        distanceData  = getDistantCallSigns(df)
+        callSignData  = getCallSignCount(df)
         countryData   = getCountries(df)
         hourlyList    = getDistanceByHour(df)
         
@@ -495,6 +492,7 @@ def analyseData(max_CallSigns=10):
         #logger.debug(f"Hourly Stats: {hourlyData}")
 
         logger.info("analyseData completed successfully.")
+
         return summaryData, distanceBinList, callSignList, distanceList, countryList, hourlyList, None
     except Exception as e:
         logger.error(f"Error in analyseData: {e}")
