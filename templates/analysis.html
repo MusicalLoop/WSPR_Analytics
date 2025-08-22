@@ -39,7 +39,7 @@
   <div class="row">
       <div class="col-md-6 mb-4">
           <!-- Furthest Stations Card -->
-          {{ macros.render_table_card( title="Furthest Stations by Distance (" ~ distanceList|length ~ ")", caption="WSPR stations received from the greatest distances.", headers=["Call Sign", "Distance (km)", "Grid", "Count"], rows=distanceList ) }}
+          {{ macros.render_table_card( title="Furthest Stations by Distance (" ~ distanceList|length ~ ")", caption="WSPR stations received from the greatest distances.", headers=["Call Sign", "Grid", "Distance (km)", "Count"], rows=distanceList ) }}
       </div>
 
       <div class="col-md-6 mb-4">
