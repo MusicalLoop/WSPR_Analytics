@@ -55,10 +55,15 @@
 </div>
 
 <div class="row">
+    <!-- Distance Distribution Card -->
     <div class="col-md-6 mb-4">
-        <!-- Distance Distribution Card -->
+        {{ macros.render_table_card( title="Distance Distribution: Frequency Binning", caption="Distribution of WSPR
+        spots across different distance ranges.", headers=["Distance Range", "Number of Spots"], rows=freqBinList )
+        }}
+    </div>
+        <div class="col-md-6 mb-4">
         {{ macros.render_table_card( title="Distance Distribution: Logarithmic Binning", caption="Distribution of WSPR
-        spots across different distance ranges.", headers=["Distance Range", "Number of Spots"], rows=distanceBinList )
+        spots across different distance ranges.", headers=["Distance Range", "Number of Spots"], rows=logBinList )
         }}
     </div>
 </div>

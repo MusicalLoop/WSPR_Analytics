@@ -15,9 +15,10 @@ def load_config(path):
     config.read(path)
     if not config.sections():
         config['default'] = {
-            'CallSign': 'Call Sign',
-            'Period': '10 minutes',
-            'TopStations': '10'
+            'CallSign'     : 'Call Sign',
+            'Period'       : '10 minutes',
+            'TopStations'  : '10',            
+            'NumBins'      : '8'              # New field for number of bins
         }
     return config['default']
 
@@ -41,13 +42,15 @@ def index():
     dark_mode = session.get('dark_mode', False)
     if request.method == 'POST':
         if 'submit' in request.form:
-            call_sign = request.form['CallSign']
-            period = request.form['Period']
+            call_sign    = request.form['CallSign']
+            period       = request.form['Period']
             top_stations = request.form['TopStations']
+            num_bins     = request.form['NumBins']
             values = {
                 'CallSign': call_sign,
                 'Period': period,
-                'TopStations': top_stations
+                'TopStations': top_stations,
+                'NumBins': num_bins # New field for number of bins
             }
             save_config(values)
             session['config_saved'] = True
@@ -98,7 +101,12 @@ def analysis():
             session['dark_mode'] = not dark_mode
             return redirect(request.url)
  
-    summaryData, distanceBinList, callSignList, distanceList, countryList, hourlyList, error = WSPR_Analytics.analyseData()
+    try:
+        num_bins = int(config.get('NumBins', 8))
+    except Exception:
+        num_bins = 8
+
+    summaryData, frequencyList, logarithmicList, callSignList, distanceList, countryList, hourlyList, error = WSPR_Analytics.analyseData(num_bins)
 
     try:
         top_stations_count = int(config.get('TopStations', 10))
@@ -135,19 +143,20 @@ def analysis():
     
     return render_template(
         'analysis.html',
-        summaryData=summaryData,
-        distanceBinList=distanceBinList,
-        callSignList=callSignList,
-        distanceList=distanceList,
-        countryList=countryList,
-        hourlyList=hourlyList,
+        summaryData           = summaryData,
+        freqBinList           = frequencyList,
+        logBinList            = logarithmicList,
+        callSignList          = callSignList,
+        distanceList          = distanceList,
+        countryList           = countryList,
+        hourlyList            = hourlyList,
         # --- Pass the mapping dictionaries to the template ---
-        hourly_header_map=hourly_header_map,
-        call_sign_header_map=call_sign_header_map,
-        distance_header_map=distance_header_map,
+        hourly_header_map     = hourly_header_map,
+        call_sign_header_map  = call_sign_header_map,
+        distance_header_map   = distance_header_map,
         error=error,
-        dark_mode=dark_mode,
-        show_menu=True,
+        dark_mode             = dark_mode,
+        show_menu             = True,
         year=datetime.datetime.now().year
     )
 

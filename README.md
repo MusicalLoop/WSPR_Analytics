@@ -4,6 +4,15 @@
 
 It provides a user-friendly interface to configure parameters, retrieve data from wspr.live, and display the results in a tabular format.
 
+## Table of Contents
+
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+
 ## Features
 
 *   Bootstrap-based web interface with dark mode toggle.
@@ -65,4 +74,8 @@ It provides a user-friendly interface to configure parameters, retrieve data fro
 3.  Use the **Configuration** page to enter your call sign and select a time period.
 4.  Click **Submit** to fetch data and view it on the **Data** page.
 5.  Click **Analysis** to display basic metrics.
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 

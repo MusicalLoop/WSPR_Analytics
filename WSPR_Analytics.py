@@ -324,22 +324,27 @@ def getCountries(Data):
     saveData(country_counts, COUNTRIES_NAME, DATA_DIR, FMT_CSV)
     return country_counts
 
-def distanceBinning(Data):
+def frequencyBinning(Data, num_bins=8):
 
-    logger.debug("distanceBinning")
+    logger.debug("frequencyBinning")
     
-    # Distance binning
-    num_bins = 8
-    Data['DistanceBin'] = pd.qcut(Data['distance'], q=num_bins)
-    bin_labels = [f"{int(interval.left)}-{int(interval.right)} km" for interval in Data['DistanceBin'].cat.categories]
-    Data['DistanceBin'] = pd.qcut(Data['distance'], q=num_bins, labels=bin_labels)
-    distance_counts = Data['DistanceBin'].value_counts().sort_index()
+    # Distance binning using pd.qcut for equal frequency bins
+    logger.debug(f"frequencyBinning: Number of Bins: {num_bins}")
+
+    Data['FrequencyBin'] = pd.qcut(Data['distance'], q=num_bins)
+
+    bin_labels = [f"{int(interval.left)}-{int(interval.right)} km" for interval in Data['FrequencyBin'].cat.categories]
+
+    Data['FrequencyBin'] = pd.qcut(Data['distance'], q=num_bins, labels=bin_labels)
+
+    distance_counts = Data['FrequencyBin'].value_counts().sort_index()
+
     distance_table = pd.DataFrame({
         "Distance Range": distance_counts.index,
         "Number of Spots": distance_counts.values
     })
     
-    logger.debug(f"distanceBinning: {distance_table}")
+    logger.debug(f"FrequencyBin: {distance_table}")
     
     saveData(distance_table, BINNING_NAME, DATA_DIR, FMT_CSV)
     return distance_table
@@ -347,6 +352,7 @@ def distanceBinning(Data):
 def logarithmicBinning(Data, num_bins=8): # Can use qcut or cut on log-transformed data
 
     logger.debug("logarithmicBinning")
+    logger.debug(f"logarithmicBinning: Number of Bins: {num_bins}")
 
     # Apply logarithmic transformation (using log1p to handle distance = 0 if any)
     Data['distance_log'] = np.log1p(Data['distance']) # log(1+x)
@@ -448,7 +454,7 @@ def getDistanceByHour(Data):
     return hourly_list_for_template
 
 
-def analyseData():
+def analyseData(number_of_bins=8):
 
     logger.debug("analyseData")
     
@@ -467,15 +473,16 @@ def analyseData():
         logger.debug(f"DataFrame Columns: {df.columns.tolist()}")
 
         summaryData   = getSummary(df)
-        #distanceBins = distanceBinning(df)
-        distanceBins  = logarithmicBinning(df)
+        freqBins      = frequencyBinning(df, number_of_bins)
+        logBins       = logarithmicBinning(df, number_of_bins)
         distanceData  = getDistantCallSigns(df)
         callSignData  = getCallSignCount(df)
         countryData   = getCountries(df)
         hourlyList    = getDistanceByHour(df)
         
         # Convert tables to lists of dicts for rendering in Jinja
-        distanceBinList = distanceBins.to_dict(orient="records")
+        freqBinList     = freqBins.to_dict(orient="records")
+        logBinList      = logBins.to_dict(orient="records")
         callSignList    = callSignData.to_dict(orient="records")
         distanceList    = distanceData.to_dict(orient="records")
         countryList     = countryData.to_dict(orient="records")
@@ -485,7 +492,8 @@ def analyseData():
 
         # Debug
         #logger.debug(f"Summary metrics: {summaryData}")
-        #logger.debug(f"Distance Graph: {distanceBinList}")
+        #logger.debug(f"Distance (Frequency Binning): {freqBinList}")
+        #logger.debug(f"Distance (Logarithmic Binning): {logBinList}")
         #logger.debug(f"Call Sign List: {callSignList}")
         #logger.debug(f"Distance List: {distanceList}")
         #logger.debug(f"Country List: {countryList}")
@@ -493,10 +501,10 @@ def analyseData():
 
         logger.info("analyseData completed successfully.")
 
-        return summaryData, distanceBinList, callSignList, distanceList, countryList, hourlyList, None
+        return summaryData, freqBinList, logBinList, callSignList, distanceList, countryList, hourlyList, None
     except Exception as e:
         logger.error(f"Error in analyseData: {e}")
-        return None, None, None, None, None, None, f"Error in analyseData: {e}"
+        return None, None, None, None, None, None, None, f"Error in analyseData: {e}"
 
 
 
