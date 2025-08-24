@@ -18,6 +18,8 @@
     <div class="mb-3">
         <label for="TopStations" class="form-label">Top Stations</label>
         <input type="number" class="form-control" id="TopStations" name="TopStations" maxlength="4" min="0" max="9999" value="{{ config['TopStations'] }}">
+        <label for="NumBins" class="form-label">Number of Analysis Bins (6-20)</label>
+        <input type="number" class="form-control" id="NumBins" name="NumBins" maxlength="2" min="6" max="20" value="{{ config['NumBins'] }}">
     </div>
     <button type="submit" name="submit" class="btn btn-primary">Submit</button>
     <button type="submit" name="reset" class="btn btn-secondary">Reset</button>
