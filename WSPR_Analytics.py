@@ -88,6 +88,18 @@ logger.addHandler(stream_handler)
 
     
 def parse_time_period(time_period_str):
+    """
+    Parses a time period string (e.g., '10 minutes', '2 hours', '1 day') and returns a corresponding timedelta object.
+
+    Args:
+        time_period_str (str): A string representing a time period, consisting of a number and a unit (minutes, hours, days).
+
+    Returns:
+        timedelta: A timedelta object representing the parsed time period.
+
+    Raises:
+        ValueError: If the unit in the time period string is not recognized.
+    """
     """Parse a time period string like '10 minutes' into a timedelta."""
     parts = time_period_str.split()
     number = int(parts[0])
@@ -167,6 +179,24 @@ def saveData(data, filename, directory="data", format="csv", **kwargs):
 
 
 def getData(call_sign, time_period_str):
+    """
+    Fetches WSPR (Weak Signal Propagation Reporter) data for a given call sign and time period.
+    Args:
+        call_sign (str): The transmitter call sign to filter data.
+        time_period_str (str): A string representing the time period (e.g., '1h', '24h', '7d').
+    Returns:
+        tuple:
+            - list[dict] or None: List of data rows as dictionaries if successful, otherwise None.
+            - str or None: Error message if an error occurred, otherwise None.
+    Raises:
+        None: All exceptions are handled internally and returned as error messages.
+    Side Effects:
+        - Saves the fetched CSV data to a file using `saveData`.
+        - Logs debug and error messages using the `logger`.
+    Notes:
+        - If no data is returned for the specified period and call sign, returns (None, error_message).
+        - If an error occurs during time period parsing, data fetching, or CSV parsing, returns (None, error_message).
+    """
     logger.debug(f"Starting data fetch for Call Sign: {call_sign}, Time Period: {time_period_str}")
     try:
         delta = parse_time_period(time_period_str)
