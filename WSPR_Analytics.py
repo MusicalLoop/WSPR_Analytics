@@ -206,6 +206,19 @@ def getData(call_sign, time_period_str):
         return None, f"Failed to parse CSV: {e}"
    
 def getSummary(Data):
+    """
+    Generates a summary of WSPR spot data statistics.
+    Parameters:
+        Data (pd.DataFrame): DataFrame containing WSPR spot data with columns 'rx_sign' and 'rx_loc'.
+    Returns:
+        list: A list of dictionaries summarizing:
+            - Total number of spots ('rx_sign' count)
+            - Total number of unique spots ('rx_sign' unique count)
+            - Total number of unique grid squares (4-digit, derived from 'rx_loc')
+            - Total number of unique grid squares (6-digit, from 'rx_loc')
+    Side Effects:
+        Saves the summary list to a CSV file using saveData().
+    """
 
     # Total number of spots using 'rx_sign'
     
@@ -239,6 +252,19 @@ def getSummary(Data):
 	
 
 def getDistantCallSigns(Data):
+    """
+    Identifies the furthest received call signs from the provided dataset.
+    This function analyzes the input DataFrame to find, for each receiver call sign ('rx_sign'),
+    the spot with the maximum distance ('distance'). It then counts the number of spots for each
+    receiver call sign and merges this information with the furthest spots. The resulting DataFrame
+    is sorted by distance in descending order, saved to disk, and returned.
+    Args:
+        Data (pd.DataFrame): A DataFrame containing WSPR spot data with at least the columns
+            'rx_sign', 'rx_loc', and 'distance'.
+    Returns:
+        pd.DataFrame: A DataFrame containing the furthest spot for each receiver call sign,
+            along with the receiver location, distance, and count of spots.
+    """
 
     # Analyse and find the Call Signs furthest away.
     
@@ -265,6 +291,15 @@ def getDistantCallSigns(Data):
     return furthest_stations
 
 def getCallSignCount(Data):
+    """
+    Computes the frequency of received call signs and their most common grid reference from the provided DataFrame.
+    Groups the input DataFrame by 'rx_sign', counts the occurrences of each call sign, and determines the most frequent grid reference ('rx_loc') for each call sign.
+    The results are sorted by count in descending order, saved to a CSV file, and returned as a DataFrame.
+    Args:
+        Data (pd.DataFrame): Input DataFrame containing at least 'rx_sign' and 'rx_loc' columns.
+    Returns:
+        pd.DataFrame: DataFrame with columns ['rx_sign', 'Count', 'gridRef'], sorted by 'Count' descending.
+    """
 
     # Top Call Signs by frequency  - including Grid Reference
 
@@ -288,6 +323,19 @@ def getCallSignCount(Data):
         
 
 def get_country_safely(callsign, callinfo_obj):
+    """
+    Safely retrieves the country associated with a given callsign using the provided callinfo object.
+
+    Args:
+        callsign (str): The callsign to look up.
+        callinfo_obj: An object with a `get_all` method that returns information about the callsign.
+
+    Returns:
+        str: The country name if found, otherwise 'Unknown'.
+
+    Notes:
+        Returns 'Unknown' if the callsign is empty, not found, or cannot be decoded.
+    """
     if not callsign:
         return 'Unknown'
     try:
@@ -297,6 +345,17 @@ def get_country_safely(callsign, callinfo_obj):
         return 'Unknown'
         
 def getCountries(Data):
+    """
+    Determines the country for each call sign in the provided DataFrame, counts the number of spots per country,
+    and saves the results to a CSV file.
+    The function uses a local country lookup file if available, otherwise downloads it. It adds a 'country' column
+    to the DataFrame by mapping each 'rx_sign' to its corresponding country. Then, it creates a summary table
+    of spot counts per country, sorts it in descending order, saves it, and returns the table.
+    Args:
+        Data (pd.DataFrame): Input DataFrame containing at least a 'rx_sign' column with call signs.
+    Returns:
+        pd.DataFrame: DataFrame with columns ['Country', 'Spots'], sorted by spot count in descending order.
+    """
     # Use Call Sign to get the Country, and then list the Countries and number of spots
     
     logger.debug(f"getCountries: City File: {CTY_FILE}")
@@ -325,6 +384,18 @@ def getCountries(Data):
     return country_counts
 
 def frequencyBinning(Data, num_bins=8):
+    """
+    Bins the 'distance' column of the input DataFrame into equal-frequency bins and labels them with distance ranges.
+    Parameters:
+        Data (pd.DataFrame): Input DataFrame containing a 'distance' column.
+        num_bins (int, optional): Number of bins to divide the data into. Default is 8.
+    Returns:
+        pd.DataFrame: A DataFrame summarizing the number of spots in each distance range bin.
+    Side Effects:
+        - Adds a 'FrequencyBin' column to the input DataFrame with bin labels.
+        - Saves the summary table to disk using saveData().
+        - Logs debug information using logger.
+    """
 
     logger.debug("frequencyBinning")
     
@@ -349,7 +420,20 @@ def frequencyBinning(Data, num_bins=8):
     saveData(distance_table, BINNING_NAME, DATA_DIR, FMT_CSV)
     return distance_table
 
-def logarithmicBinning(Data, num_bins=8): # Can use qcut or cut on log-transformed data
+
+def logarithmicBinning(Data, num_bins=8):
+    """
+    Performs logarithmic binning on the 'distance' column of the input DataFrame.
+    The function applies a logarithmic transformation to the 'distance' values, then divides the transformed data into
+    equal-width bins in log-space. The bins are then labeled with their corresponding ranges in the original scale (km).
+    A summary table of the number of data points in each bin is generated and saved.
+    Args:
+        Data (pd.DataFrame): Input DataFrame containing a 'distance' column.
+        num_bins (int, optional): Number of bins to create in log-space. Defaults to 8.
+    Returns:
+        pd.DataFrame: A summary table with columns 'Distance Range' and 'Number of Spots', representing the bin ranges
+                      and the count of data points in each bin.
+    """
 
     logger.debug("logarithmicBinning")
     logger.debug(f"logarithmicBinning: Number of Bins: {num_bins}")
@@ -389,6 +473,23 @@ def logarithmicBinning(Data, num_bins=8): # Can use qcut or cut on log-transform
 
 
 def getDistanceByHour(Data):
+    """
+    Processes a DataFrame containing WSPR spot data to compute hourly statistics for the 'distance' field.
+    The function performs the following steps:
+    - Converts the 'time' column to datetime and sets it as the index.
+    - Defines the full hourly time range for the data period.
+    - Resamples the data by hour, calculating mean, min, max, and count of 'distance'.
+    - Ensures all hours within the date range are present in the output.
+    - Drops hours with no data.
+    - Renames columns for clarity and formatting.
+    - Rounds the mean values and converts min, max, and count to integers.
+    - Saves the processed data to a CSV file.
+    - Converts the final DataFrame to a list of dictionaries for template rendering.
+    Args:
+        Data (pd.DataFrame): Input DataFrame containing at least 'time' and 'distance' columns.
+    Returns:
+        List[dict]: A list of dictionaries, each representing hourly statistics for template rendering.
+    """
 
     logger.debug("getDistanceByHour")
 
@@ -455,6 +556,23 @@ def getDistanceByHour(Data):
 
 
 def analyseData(number_of_bins=8):
+    """
+    Analyzes WSPR data from a CSV file and computes various summary statistics and binning results.
+    Parameters:
+        number_of_bins (int): The number of bins to use for frequency and logarithmic binning. Default is 8.
+    Returns:
+        tuple:
+            summaryData (dict): Summary statistics of the dataset.
+            freqBinList (list of dict): Frequency-binned data records.
+            logBinList (list of dict): Logarithmically-binned data records.
+            callSignList (list of dict): Call sign count data records.
+            distanceList (list of dict): Distant call sign data records.
+            countryList (list of dict): Country data records.
+            hourlyList (list): Distance by hour statistics.
+            error (str or None): Error message if an exception occurred, otherwise None.
+    Raises:
+        Exception: Logs and returns error information if any step fails.
+    """
 
     logger.debug("analyseData")
     
