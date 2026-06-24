@@ -43,7 +43,7 @@ def reset_config():
 def index():
     show_menu = session.get('config_saved', False)
     dark_mode = session.get('dark_mode', False)
-    if request.method == 'POST':
+    if request.method == "POST":
         if 'submit' in request.form:
             call_sign    = request.form['CallSign']
             period       = request.form['Period']
@@ -57,7 +57,7 @@ def index():
             }
             save_config(values)
             session['config_saved'] = True
-            return redirect(url_for('data'))
+            return redirect(url_for('dashboard'))
         elif 'reset' in request.form:
             values = reset_config()
             session['config_saved'] = False
@@ -68,13 +68,29 @@ def index():
     config = load_config(CONFIG_FILE if show_menu else DEFAULT_FILE)
     return render_template('index.html', config=config, periods=period_list(), dark_mode=dark_mode, show_menu=show_menu, year=datetime.datetime.now().year)
 
+@app.route('/dashboard', methods=['GET', 'POST'])
+def dashboard():
+    if not session.get('config_saved', False):
+        return redirect(url_for('index'))
+    dark_mode = session.get('dark_mode', False)
+    if request.method == "POST":
+        if 'dark_toggle' in request.form:
+            session['dark_mode'] = not dark_mode
+            return redirect(request.url)
+    return render_template(
+        'dashboard.html',
+        dark_mode=dark_mode,
+        show_menu=True,
+        year=datetime.datetime.now().year
+    )
+
 @app.route('/data', methods=['GET', 'POST'])
 def data():
     if not session.get('config_saved', False):
         return redirect(url_for('index'))
     config = load_config(CONFIG_FILE)
     dark_mode = session.get('dark_mode', False)
-    if request.method == 'POST':
+    if request.method == "POST":
         if 'dark_toggle' in request.form:
             session['dark_mode'] = not dark_mode
             return redirect(request.url)
@@ -99,7 +115,7 @@ def analysis():
 
     dark_mode = session.get('dark_mode', False)
 
-    if request.method == 'POST':
+    if request.method == "POST":
         if 'dark_toggle' in request.form:
             session['dark_mode'] = not dark_mode
             return redirect(request.url)
@@ -168,7 +184,7 @@ def visualise():
     if not session.get('config_saved', False):
         return redirect(url_for('index'))
     dark_mode = session.get('dark_mode', False)
-    if request.method == 'POST':
+    if request.method == "POST":
         if 'dark_toggle' in request.form:
             session['dark_mode'] = not dark_mode
             return redirect(request.url)

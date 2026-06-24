@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h2>Configuration</h2>
-<form method="post">
+<form method="post" id="configForm">
     <div class="mb-3">
         <label for="CallSign" class="form-label">Call Sign</label>
         <input type="text" class="form-control" id="CallSign" name="CallSign" maxlength="10" value="{{ config['CallSign'] }}">
@@ -21,7 +21,18 @@
         <label for="NumBins" class="form-label">Number of Analysis Bins (6-20)</label>
         <input type="number" class="form-control" id="NumBins" name="NumBins" maxlength="2" min="6" max="20" value="{{ config['NumBins'] }}">
     </div>
-    <button type="submit" name="submit" class="btn btn-primary">Submit</button>
-    <button type="submit" name="reset" class="btn btn-secondary">Reset</button>
+    <button type="submit" name="submit" value="1" id="submitBtn" class="btn btn-primary">Submit</button>
+    <button type="submit" name="reset" value="1" class="btn btn-secondary">Reset</button>
 </form>
+<script>
+document.getElementById('configForm').addEventListener('submit', function (e) {
+    if (e.submitter && e.submitter.id === 'submitBtn') {
+        var btn = e.submitter;
+        setTimeout(function () {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Fetching data...';
+        }, 0);
+    }
+});
+</script>
 {% endblock %}
