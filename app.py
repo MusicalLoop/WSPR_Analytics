@@ -1,11 +1,14 @@
 import os
 import configparser
 from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory
+from dotenv import load_dotenv
 import datetime
 import WSPR_Analytics
 
+load_dotenv()
+
 app = Flask(__name__)
-app.secret_key = "super-secret-key"  # Change for production
+app.secret_key = os.environ.get('WSPR_SECRET_KEY', 'wspr-analytics-dev-key')
 
 CONFIG_FILE = 'WSPR_Analytics.conf'
 DEFAULT_FILE = 'WSPR_Analytics.ini'

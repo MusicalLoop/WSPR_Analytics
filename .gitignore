@@ -1,0 +1,20 @@
+# Environment and secrets
+.env
+
+# Runtime data
+data/
+logs/
+
+# User configuration (generated at runtime)
+WSPR_Analytics.conf
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db

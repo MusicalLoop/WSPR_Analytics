@@ -403,7 +403,9 @@ def getCountries(Data):
 
 
     # Add country column
-    Data['country'] = Data['rx_sign'].apply(lambda call: get_country_safely(call, callInfo))
+    unique_calls = Data['rx_sign'].unique()
+    country_map = {call: get_country_safely(call, callInfo) for call in unique_calls}
+    Data['country'] = Data['rx_sign'].map(country_map)
 
     # Create country spot count table
     country_counts = Data['country'].value_counts().reset_index()
