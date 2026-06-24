@@ -1,6 +1,14 @@
 {% extends "base.html" %}
 {% import "_macros.html" as macros %}
 
+{% block head %}
+  {{ super() }}
+  {{ map_header_html | safe }}
+  <style>
+  .folium-map { height: 100% !important; width: 100% !important; }
+  </style>
+{% endblock %}
+
 {% block content %}
 <h2>Dashboard</h2>
 
@@ -126,4 +134,22 @@
 
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script>
+  {{ map_script_html | safe }}
+  </script>
+  <script>
+  document.querySelectorAll('#map-tab').forEach(function(tab) {
+    tab.addEventListener('shown.bs.tab', function() {
+      document.querySelectorAll('.folium-map').forEach(function(el) {
+        if (window[el.id] && window[el.id].invalidateSize) {
+          window[el.id].invalidateSize();
+        }
+      });
+    });
+  });
+  </script>
 {% endblock %}

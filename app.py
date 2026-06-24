@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import logging
 import configparser
@@ -7,6 +8,8 @@ from dotenv import load_dotenv
 import datetime
 import pandas as pd
 import folium
+from folium.plugins import GroupedLayerControl
+from pyhamtools import Callinfo, LookupLib
 import WSPR_Analytics
 
 logger = logging.getLogger()
@@ -133,7 +136,9 @@ def dashboard():
         freq_chart_data=json.dumps({'labels': [], 'values': []}),
         hourly_chart_data=json.dumps({'labels': [], 'values': []}),
         country_chart_data=json.dumps({'labels': [], 'values': []}),
-        map_html='',
+        map_header_html='',
+        map_body_html='',
+        map_script_html='',
         tx_lat=tx_lat,
         tx_lon=tx_lon,
         dark_mode=dark_mode,
@@ -175,7 +180,9 @@ def dashboard():
     best_snr_call = None
     best_snr_distance = None
     snr_scatter_data = json.dumps([])
-    map_html = ''
+    map_header_html = ''
+    map_body_html = ''
+    map_script_html = ''
     raw_data = None
     try:
         raw_data = pd.read_csv('data/WSPR_Analytics.csv')
@@ -221,22 +228,69 @@ def dashboard():
 
             receivers = raw_data.loc[raw_data.groupby('rx_sign')['snr'].idxmax()]
 
+            # Per-callsign country lookup, mirroring WSPR_Analytics.getCountries().
+            # data/WSPR_Countries.csv only holds aggregate Country/Spots totals,
+            # not a per-callsign mapping, so it can't be read back for this.
+            country_by_call = {}
+            try:
+                if os.path.exists(WSPR_Analytics.CTY_FILE):
+                    lookup_lib = LookupLib(lookuptype="countryfile", filename=WSPR_Analytics.CTY_FILE)
+                else:
+                    lookup_lib = LookupLib(lookuptype="countryfile")
+                call_info = Callinfo(lookup_lib)
+                country_by_call = {
+                    call: WSPR_Analytics.get_country_safely(call, call_info)
+                    for call in receivers['rx_sign'].unique()
+                }
+            except Exception as e:
+                logger.warning(f"Failed to resolve countries for map layers: {e}")
+
+            raw_data_countries = raw_data['rx_sign'].map(country_by_call).fillna('Unknown')
+            country_counts = raw_data_countries.value_counts()
+            country_counts = country_counts[country_counts.index != 'Unknown']
+            top_countries = list(country_counts.head(10).index)
+
+            # Distance FeatureGroups (markers live here)
+            fg_under_500 = folium.FeatureGroup(name='Under 500 km', show=True)
+            fg_500_1000 = folium.FeatureGroup(name='500 – 1,000 km', show=True)
+            fg_over_1000 = folium.FeatureGroup(name='Over 1,000 km', show=True)
+            for fg in (fg_under_500, fg_500_1000, fg_over_1000):
+                fg.add_to(folium_map)
+
+            # Country FeatureGroups (propagation lines live here)
+            country_feature_groups = {}
+            for country_name in top_countries:
+                country_feature_groups[country_name] = folium.FeatureGroup(name=country_name, show=True)
+            country_feature_groups['Other'] = folium.FeatureGroup(name='Other', show=True)
+            for fg in country_feature_groups.values():
+                fg.add_to(folium_map)
+
             for _, rx_row in receivers.iterrows():
                 rx_distance = rx_row['distance']
                 if rx_distance < 500:
                     line_colour = 'green'
+                    distance_group = fg_under_500
                 elif rx_distance <= 1000:
                     line_colour = 'orange'
+                    distance_group = fg_500_1000
                 else:
                     line_colour = 'red'
+                    distance_group = fg_over_1000
+
+                country_name = country_by_call.get(rx_row['rx_sign'], 'Unknown')
+                country_group = country_feature_groups.get(country_name, country_feature_groups['Other'])
 
                 popup_html = (
                     f"<b>{rx_row['rx_sign']}</b><br>"
                     f"Distance: {rx_distance:.0f} km<br>"
                     f"Best SNR: {rx_row['snr']} dB<br>"
-                    f"Grid: {rx_row['rx_loc']}"
+                    f"Grid: {rx_row['rx_loc']}<br>"
+                    f"Country: {country_name}"
                 )
 
+                # A folium element can only belong to one FeatureGroup, so the
+                # marker (distance dimension) and line (country dimension) are
+                # split across the two groups they need to be filterable by.
                 folium.CircleMarker(
                     location=[rx_row['rx_lat'], rx_row['rx_lon']],
                     radius=6,
@@ -245,15 +299,16 @@ def dashboard():
                     fill=True,
                     fillColor=line_colour,
                     fillOpacity=0.8
-                ).add_to(folium_map)
+                ).add_to(distance_group)
 
                 folium.PolyLine(
                     locations=[[tx_lat, tx_lon], [rx_row['rx_lat'], rx_row['rx_lon']]],
                     color=line_colour,
                     weight=2,
                     opacity=0.7
-                ).add_to(folium_map)
+                ).add_to(country_group)
 
+            # Distance rings stay outside any FeatureGroup so they're always visible.
             for ring_radius_km in (500, 1000, 1500):
                 folium.Circle(
                     location=[tx_lat, tx_lon],
@@ -263,10 +318,31 @@ def dashboard():
                     dashArray='5, 5'
                 ).add_to(folium_map)
 
-            map_html = folium_map._repr_html_()
+            GroupedLayerControl(
+                groups={
+                    'Distance': [fg_under_500, fg_500_1000, fg_over_1000],
+                    'Countries': list(country_feature_groups.values())
+                },
+                exclusive_groups=False,
+                collapsed=False,
+                position='topright'
+            ).add_to(folium_map)
+
+            map_root = folium_map.get_root()
+            map_root.render()
+            map_header_html = map_root.header.render()
+            map_body_html = map_root.html.render()
+            map_script_html = map_root.script.render()
+
+            # Folium injects its own Bootstrap 5.2.2 CSS/JS, which conflicts
+            # with the page's own Bootstrap 5.3.3 (loaded via base.html).
+            map_header_html = re.sub(r'<link[^>]*bootstrap[^>]*>', '', map_header_html)
+            map_header_html = re.sub(r'<script[^>]*bootstrap[^>]*></script>', '', map_header_html)
         except Exception as e:
             logger.warning(f"Failed to build Folium map: {e}")
-            map_html = ''
+            map_header_html = ''
+            map_body_html = ''
+            map_script_html = ''
 
     freq_chart_data = json.dumps({
         'labels': [row['Distance Range'] for row in frequencyList],
@@ -300,7 +376,9 @@ def dashboard():
         freq_chart_data=freq_chart_data,
         hourly_chart_data=hourly_chart_data,
         country_chart_data=country_chart_data,
-        map_html=map_html,
+        map_header_html=map_header_html,
+        map_body_html=map_body_html,
+        map_script_html=map_script_html,
         tx_lat=tx_lat,
         tx_lon=tx_lon,
         error=error,
