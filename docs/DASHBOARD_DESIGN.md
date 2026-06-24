@@ -109,6 +109,36 @@ request when the Dashboard route is hit. No reloading between tabs.
 
 ---
 
+## Map Tab — Future Enhancements
+
+Three planned improvements, in priority order.
+
+### SHORT TERM — Distance layer groups
+
+- Group map markers and lines into three Folium FeatureGroups
+  matching existing colour scheme: Under 500km, 500-1000km,
+  Over 1000km
+- Add folium.LayerControl to map for toggling
+- All layers visible by default
+- Allows user to isolate DX contacts by hiding near-field stations
+
+### SHORT TERM — Country layer groups
+
+- Additional Folium FeatureGroups grouped by country
+- Combined with distance layers in the same LayerControl panel
+- Allows isolation of specific countries for contest analysis
+
+### MEDIUM TERM — Time-based animation
+
+- JavaScript time slider to scrub through the period
+- Shows propagation paths appearing/disappearing over time
+- Reveals daily propagation cycles, grey line effects,
+  band openings
+- Implementation: TimestampedGeoJson or custom JS layer filtering
+- High visual impact for community sharing
+
+---
+
 ### Tab 3 — Charts
 
 **Purpose:** Visual analysis of propagation data.

@@ -2,7 +2,7 @@
 
 ## Current Position
 
-**Branch:** feature/dashboard  
+**Branch:** main  
 **Deployed:** /opt/wspr-analytics/ on A7-Mint  
 **Repo:** https://github.com/MusicalLoop/WSPR_Analytics
 
@@ -19,14 +19,7 @@
 | python-dotenv | Added to requirements.txt | 8c1faef |
 | gunicorn | Added to requirements.txt | 8c1faef |
 | Documentation | DASHBOARD_DESIGN, ROADMAP, INSTALL added | TBC |
-
----
-
-## In Progress
-
-| Item | Description | Branch |
-|------|-------------|--------|
-| Dashboard redesign | Tabbed dashboard, revised flow, charts, map | feature/dashboard |
+| Dashboard redesign | Tabbed dashboard, revised flow, summary cards, Folium map, Chart.js charts, analysis tables | 017463e (2026-06-24) |
 
 ### Dashboard redesign scope
 
@@ -37,12 +30,18 @@
 - Map tab with Folium interactive map
 - Charts tab with Chart.js visualisations
 - Analysis tab with existing tables migrated
-- Share card PNG export (Pillow)
 - Loading indicator on Configuration submit
 - Partials template structure
 - Data passed directly to template
-- WSPR_DEBUG_CSV flag for analysis CSV control
 - Deploy script
+
+---
+
+## In Progress
+
+| Item | Description | Branch |
+|------|-------------|--------|
+| None | | |
 
 ---
 
@@ -56,6 +55,9 @@
 | Azimuth rose | Polar plot of propagation bearings | Medium |
 | Drift analysis | Flag receivers with clock problems | Low |
 | Single page flow | Simplified UX for non-technical OARC users | Low |
+| Map distance layer groups | Toggle green/orange/red layers | Short term |
+| Map country layer groups | Toggle by country | Short term |
+| Map time animation | Scrub through propagation over time | Medium term |
 
 ---
 
