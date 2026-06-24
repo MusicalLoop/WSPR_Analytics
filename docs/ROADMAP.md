@@ -20,6 +20,8 @@
 | gunicorn | Added to requirements.txt | 8c1faef |
 | Documentation | DASHBOARD_DESIGN, ROADMAP, INSTALL added | TBC |
 | Dashboard redesign | Tabbed dashboard, revised flow, summary cards, Folium map, Chart.js charts, analysis tables | 017463e (2026-06-24) |
+| Map distance layer groups | Toggle green/orange/red layers via GroupedLayerControl | 2228962 (2026-06-24) |
+| Map country layer groups | Toggle by country via GroupedLayerControl | 2228962 (2026-06-24) |
 
 ### Dashboard redesign scope
 
@@ -55,8 +57,6 @@
 | Azimuth rose | Polar plot of propagation bearings | Medium |
 | Drift analysis | Flag receivers with clock problems | Low |
 | Single page flow | Simplified UX for non-technical OARC users | Low |
-| Map distance layer groups | Toggle green/orange/red layers | Short term |
-| Map country layer groups | Toggle by country | Short term |
 | Map time animation | Scrub through propagation over time | Medium term |
 
 ---
