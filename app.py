@@ -21,6 +21,15 @@ def parse_tx_coordinate(value, default, field_name):
         logger.warning(f"Invalid or missing {field_name} ({value!r}); defaulting to {default}")
         return default
 
+def format_snr(value, decimals=0):
+    if value is None or pd.isna(value):
+        return None
+    rounded = round(float(value), decimals)
+    if decimals == 0:
+        rounded = int(rounded)
+    sign = '+' if rounded >= 0 else ''
+    return f"{sign}{rounded} dB"
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -156,6 +165,12 @@ def dashboard():
         callSignList = callSignList[:top_stations_count]
         distanceList = distanceList[:top_stations_count]
 
+    for row in callSignList:
+        row['distance'] = 0
+    for row in distanceList:
+        row['best_snr'] = 'N/A'
+        row['mean_snr'] = 'N/A'
+
     best_snr_value = None
     best_snr_call = None
     best_snr_distance = None
@@ -179,6 +194,26 @@ def dashboard():
         ])
     except Exception:
         pass
+
+    if raw_data is not None:
+        try:
+            distance_mode_lookup = (
+                raw_data.groupby('rx_sign')['distance']
+                .apply(lambda s: s.mode().iloc[0])
+                .to_dict()
+            )
+            snr_stats = raw_data.groupby('rx_sign')['snr'].agg(['max', 'mean'])
+
+            for row in callSignList:
+                row['distance'] = distance_mode_lookup.get(row['rx_sign'], 0)
+
+            for row in distanceList:
+                rx_sign = row['rx_sign']
+                if rx_sign in snr_stats.index:
+                    row['best_snr'] = format_snr(snr_stats.loc[rx_sign, 'max'], decimals=0) or 'N/A'
+                    row['mean_snr'] = format_snr(snr_stats.loc[rx_sign, 'mean'], decimals=1) or 'N/A'
+        except Exception as e:
+            logger.warning(f"Failed to enrich call sign / distance tables: {e}")
 
     if raw_data is not None:
         try:

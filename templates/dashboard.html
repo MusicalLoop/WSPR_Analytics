@@ -109,13 +109,13 @@
             </div>
             <div class="col-md-6 mb-4">
                 {{ macros.render_table_card(title="Top Call Signs", caption="Most frequently spotted WSPR call signs.",
-                headers=["Call Sign", "Count", "Grid"], rows=callSignList) }}
+                headers=["Call Sign", "Count", "Grid", "Distance (km)"], rows=callSignList) }}
             </div>
         </div>
         <div class="row">
             <div class="col-md-6 mb-4">
                 {{ macros.render_table_card(title="Furthest Stations", caption="WSPR stations received from the
-                greatest distances.", headers=["Call Sign", "Grid", "Distance (km)", "Count"], rows=distanceList) }}
+                greatest distances.", headers=["Call Sign", "Grid", "Distance (km)", "Count", "Best SNR", "Mean SNR"], rows=distanceList) }}
             </div>
             <div class="col-md-6 mb-4">
                 {{ macros.render_table_card(title="Countries", caption="WSPR spot counts grouped by originating
