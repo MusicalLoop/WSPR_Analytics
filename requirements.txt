@@ -4,3 +4,4 @@ pandas
 pyhamtools
 python-dotenv
 gunicorn
+folium

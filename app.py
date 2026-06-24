@@ -1,10 +1,25 @@
 import os
+import json
+import logging
 import configparser
 from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory
 from dotenv import load_dotenv
 import datetime
 import pandas as pd
+import folium
 import WSPR_Analytics
+
+logger = logging.getLogger()
+
+DEFAULT_TX_LAT = 51.5
+DEFAULT_TX_LON = -0.5
+
+def parse_tx_coordinate(value, default, field_name):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        logger.warning(f"Invalid or missing {field_name} ({value!r}); defaulting to {default}")
+        return default
 
 load_dotenv()
 
@@ -21,9 +36,14 @@ def load_config(path):
         config['default'] = {
             'CallSign'     : 'Call Sign',
             'Period'       : '10 minutes',
-            'TopStations'  : '10',            
-            'NumBins'      : '8'              # New field for number of bins
+            'TopStations'  : '10',
+            'NumBins'      : '8',             # New field for number of bins
+            'TxLat'        : str(DEFAULT_TX_LAT),
+            'TxLon'        : str(DEFAULT_TX_LON)
         }
+    else:
+        config['default'].setdefault('TxLat', str(DEFAULT_TX_LAT))
+        config['default'].setdefault('TxLon', str(DEFAULT_TX_LON))
     return config['default']
 
 def save_config(values):
@@ -50,11 +70,15 @@ def index():
             period       = request.form['Period']
             top_stations = request.form['TopStations']
             num_bins     = request.form['NumBins']
+            tx_lat       = parse_tx_coordinate(request.form.get('TxLat'), DEFAULT_TX_LAT, 'TxLat')
+            tx_lon       = parse_tx_coordinate(request.form.get('TxLon'), DEFAULT_TX_LON, 'TxLon')
             values = {
                 'CallSign': call_sign,
                 'Period': period,
                 'TopStations': top_stations,
-                'NumBins': num_bins # New field for number of bins
+                'NumBins': num_bins, # New field for number of bins
+                'TxLat': str(tx_lat),
+                'TxLon': str(tx_lon)
             }
             save_config(values)
             session['config_saved'] = True
@@ -82,6 +106,9 @@ def dashboard():
             session['dark_mode'] = not dark_mode
             return redirect(request.url)
 
+    tx_lat = parse_tx_coordinate(config.get('TxLat'), DEFAULT_TX_LAT, 'TxLat')
+    tx_lon = parse_tx_coordinate(config.get('TxLon'), DEFAULT_TX_LON, 'TxLon')
+
     empty_result = dict(
         summaryData=None,
         frequencyList=None,
@@ -93,6 +120,13 @@ def dashboard():
         best_snr_value=None,
         best_snr_call=None,
         best_snr_distance=None,
+        snr_scatter_data=json.dumps([]),
+        freq_chart_data=json.dumps({'labels': [], 'values': []}),
+        hourly_chart_data=json.dumps({'labels': [], 'values': []}),
+        country_chart_data=json.dumps({'labels': [], 'values': []}),
+        map_html='',
+        tx_lat=tx_lat,
+        tx_lon=tx_lon,
         dark_mode=dark_mode,
         show_menu=True,
         year=datetime.datetime.now().year,
@@ -125,14 +159,95 @@ def dashboard():
     best_snr_value = None
     best_snr_call = None
     best_snr_distance = None
+    snr_scatter_data = json.dumps([])
+    map_html = ''
+    raw_data = None
     try:
         raw_data = pd.read_csv('data/WSPR_Analytics.csv')
         best_row = raw_data.loc[raw_data['snr'].idxmax()]
         best_snr_value = int(best_row['snr'])
         best_snr_call = best_row['rx_sign']
         best_snr_distance = int(best_row['distance'])
+
+        time_fmt = pd.to_datetime(raw_data['time']).dt.strftime('%H:%M')
+        snr_scatter_data = json.dumps([
+            {'x': float(d), 'y': float(s), 'call': c, 'grid': g, 'time': t}
+            for d, s, c, g, t in zip(
+                raw_data['distance'], raw_data['snr'],
+                raw_data['rx_sign'], raw_data['rx_loc'], time_fmt
+            )
+        ])
     except Exception:
         pass
+
+    if raw_data is not None:
+        try:
+            folium_map = folium.Map(location=[tx_lat, tx_lon], zoom_start=5, tiles='OpenStreetMap')
+
+            receivers = raw_data.loc[raw_data.groupby('rx_sign')['snr'].idxmax()]
+
+            for _, rx_row in receivers.iterrows():
+                rx_distance = rx_row['distance']
+                if rx_distance < 500:
+                    line_colour = 'green'
+                elif rx_distance <= 1000:
+                    line_colour = 'orange'
+                else:
+                    line_colour = 'red'
+
+                popup_html = (
+                    f"<b>{rx_row['rx_sign']}</b><br>"
+                    f"Distance: {rx_distance:.0f} km<br>"
+                    f"Best SNR: {rx_row['snr']} dB<br>"
+                    f"Grid: {rx_row['rx_loc']}"
+                )
+
+                folium.CircleMarker(
+                    location=[rx_row['rx_lat'], rx_row['rx_lon']],
+                    radius=6,
+                    popup=folium.Popup(popup_html, max_width=220),
+                    color=line_colour,
+                    fill=True,
+                    fillColor=line_colour,
+                    fillOpacity=0.8
+                ).add_to(folium_map)
+
+                folium.PolyLine(
+                    locations=[[tx_lat, tx_lon], [rx_row['rx_lat'], rx_row['rx_lon']]],
+                    color=line_colour,
+                    weight=2,
+                    opacity=0.7
+                ).add_to(folium_map)
+
+            for ring_radius_km in (500, 1000, 1500):
+                folium.Circle(
+                    location=[tx_lat, tx_lon],
+                    radius=ring_radius_km * 1000,
+                    color='grey',
+                    fill=False,
+                    dashArray='5, 5'
+                ).add_to(folium_map)
+
+            map_html = folium_map._repr_html_()
+        except Exception as e:
+            logger.warning(f"Failed to build Folium map: {e}")
+            map_html = ''
+
+    freq_chart_data = json.dumps({
+        'labels': [row['Distance Range'] for row in frequencyList],
+        'values': [row['Number of Spots'] for row in frequencyList]
+    })
+
+    hourly_chart_data = json.dumps({
+        'labels': [row['Time'].strftime('%H:%M') for row in hourlyList],
+        'values': [row['Spots'] for row in hourlyList]
+    })
+
+    top_countries = countryList[:10]
+    country_chart_data = json.dumps({
+        'labels': [row['Country'] for row in top_countries],
+        'values': [row['Spots'] for row in top_countries]
+    })
 
     return render_template(
         'dashboard.html',
@@ -146,6 +261,13 @@ def dashboard():
         best_snr_value=best_snr_value,
         best_snr_call=best_snr_call,
         best_snr_distance=best_snr_distance,
+        snr_scatter_data=snr_scatter_data,
+        freq_chart_data=freq_chart_data,
+        hourly_chart_data=hourly_chart_data,
+        country_chart_data=country_chart_data,
+        map_html=map_html,
+        tx_lat=tx_lat,
+        tx_lon=tx_lon,
         error=error,
         dark_mode=dark_mode,
         show_menu=True,

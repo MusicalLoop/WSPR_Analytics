@@ -204,6 +204,12 @@ from JSON data passed from Flask.
 
 ## Architecture Decisions
 
+### TX QTH location
+
+TX QTH stored as decimal lat/lon in config file.
+Configured on the Configuration page.
+Used as map centre and propagation path origin.
+
 ### Data flow
 
 - Configuration Submit triggers fetch + full analysis in one step

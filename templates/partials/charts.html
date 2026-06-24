@@ -1,0 +1,141 @@
+<div class="row">
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header"><h5 class="mb-0">Spot Count by Distance Band</h5></div>
+            <div class="card-body"><canvas id="chartFrequency"></canvas></div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header"><h5 class="mb-0">SNR vs Distance</h5></div>
+            <div class="card-body"><canvas id="chartSnr"></canvas></div>
+        </div>
+    </div>
+</div>
+<div class="row">
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header"><h5 class="mb-0">Spots over Time</h5></div>
+            <div class="card-body"><canvas id="chartHourly"></canvas></div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header"><h5 class="mb-0">Countries Heard</h5></div>
+            <div class="card-body"><canvas id="chartCountries"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var freqChartData = {{ freq_chart_data | safe }};
+    var snrScatterData = {{ snr_scatter_data | safe }};
+    var hourlyChartData = {{ hourly_chart_data | safe }};
+    var countryChartData = {{ country_chart_data | safe }};
+
+    var charts = [];
+
+    charts.push(new Chart(document.getElementById('chartFrequency'), {
+        type: 'bar',
+        data: {
+            labels: freqChartData.labels,
+            datasets: [{
+                label: 'Number of Spots',
+                data: freqChartData.values,
+                backgroundColor: 'rgba(54, 162, 235, 0.7)'
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { title: { display: true, text: 'Spot Count by Distance Band' } },
+            scales: {
+                x: { title: { display: true, text: 'Distance Range' } },
+                y: { title: { display: true, text: 'Number of Spots' }, beginAtZero: true }
+            }
+        }
+    }));
+
+    charts.push(new Chart(document.getElementById('chartSnr'), {
+        type: 'scatter',
+        data: {
+            datasets: [{
+                label: 'SNR vs Distance',
+                data: snrScatterData,
+                backgroundColor: 'rgba(255, 159, 64, 0.7)'
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: { display: true, text: 'SNR vs Distance' },
+                tooltip: {
+                    callbacks: {
+                        label: function (context) {
+                            const d = context.raw;
+                            return [
+                                d.call + ' · ' + d.grid,
+                                'Distance: ' + d.x + ' km',
+                                'SNR: ' + d.y + ' dB',
+                                'Time: ' + d.time
+                            ];
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { title: { display: true, text: 'Distance (km)' } },
+                y: { title: { display: true, text: 'SNR (dB)' } }
+            }
+        }
+    }));
+
+    charts.push(new Chart(document.getElementById('chartHourly'), {
+        type: 'bar',
+        data: {
+            labels: hourlyChartData.labels,
+            datasets: [{
+                label: 'Number of Spots',
+                data: hourlyChartData.values,
+                backgroundColor: 'rgba(40, 167, 69, 0.7)'
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { title: { display: true, text: 'Spots over Time' } },
+            scales: {
+                x: { title: { display: true, text: 'Time' } },
+                y: { title: { display: true, text: 'Number of Spots' }, beginAtZero: true }
+            }
+        }
+    }));
+
+    charts.push(new Chart(document.getElementById('chartCountries'), {
+        type: 'bar',
+        data: {
+            labels: countryChartData.labels,
+            datasets: [{
+                label: 'Number of Spots',
+                data: countryChartData.values,
+                backgroundColor: 'rgba(153, 102, 255, 0.7)'
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            plugins: { title: { display: true, text: 'Countries Heard' } },
+            scales: {
+                x: { title: { display: true, text: 'Number of Spots' }, beginAtZero: true },
+                y: { title: { display: true, text: 'Country' } }
+            }
+        }
+    }));
+
+    var chartsTab = document.getElementById('charts-tab');
+    if (chartsTab) {
+        chartsTab.addEventListener('shown.bs.tab', function () {
+            charts.forEach(function (chart) { chart.resize(); });
+        });
+    }
+})();
+</script>

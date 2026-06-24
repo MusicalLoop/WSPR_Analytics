@@ -6,6 +6,18 @@
         <label for="CallSign" class="form-label">Call Sign</label>
         <input type="text" class="form-control" id="CallSign" name="CallSign" maxlength="10" value="{{ config['CallSign'] }}">
     </div>
+    <div class="row mb-1">
+        <div class="col-md-6">
+            <label for="TxLat" class="form-label">Latitude</label>
+            <input type="number" class="form-control" id="TxLat" name="TxLat" step="0.001" min="-90" max="90" value="{{ config['TxLat'] }}">
+        </div>
+        <div class="col-md-6">
+            <label for="TxLon" class="form-label">Longitude</label>
+            <input type="number" class="form-control" id="TxLon" name="TxLon" step="0.001" min="-180" max="180" value="{{ config['TxLon'] }}">
+        </div>
+    </div>
+    <div class="form-text mb-3">Your transmitter location in decimal degrees (e.g. 55.021, -1.542 for Newcastle)</div>
+    <hr>
     <div class="mb-3">
         <label for="Period" class="form-label">Period</label>
         <select class="form-select" id="Period" name="Period">
