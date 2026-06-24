@@ -1,5 +1,129 @@
 {% extends "base.html" %}
+{% import "_macros.html" as macros %}
+
 {% block content %}
 <h2>Dashboard</h2>
-<p>Placeholder — dashboard content coming soon.</p>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% else %}
+
+<ul class="nav nav-tabs mb-3" id="dashboardTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="summary-tab" data-bs-toggle="tab" data-bs-target="#summary-pane"
+            type="button" role="tab" aria-controls="summary-pane" aria-selected="true">Summary</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="map-tab" data-bs-toggle="tab" data-bs-target="#map-pane"
+            type="button" role="tab" aria-controls="map-pane" aria-selected="false">Map</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="charts-tab" data-bs-toggle="tab" data-bs-target="#charts-pane"
+            type="button" role="tab" aria-controls="charts-pane" aria-selected="false">Charts</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="analysis-tab" data-bs-toggle="tab" data-bs-target="#analysis-pane"
+            type="button" role="tab" aria-controls="analysis-pane" aria-selected="false">Analysis</button>
+    </li>
+</ul>
+
+<div class="tab-content" id="dashboardTabContent">
+
+    <!-- Summary tab -->
+    <div class="tab-pane fade show active" id="summary-pane" role="tabpanel" aria-labelledby="summary-tab" tabindex="0">
+        {% set total_spots = (summaryData | selectattr('label', 'equalto', 'Total spots') | first).value %}
+        {% set unique_spots = (summaryData | selectattr('label', 'equalto', 'Total unique spots') | first).value %}
+        <div class="row mb-4">
+            <div class="col">
+                <div class="card metric-card h-100">
+                    <div class="metric-value">{{ total_spots }}</div>
+                    <div class="metric-label">Total spots</div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card metric-card h-100">
+                    <div class="metric-value">{{ unique_spots }}</div>
+                    <div class="metric-label">Total unique spots</div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card metric-card h-100">
+                    {% if distanceList and distanceList|length > 0 %}
+                    <div class="metric-value">{{ "{:,.0f}".format(distanceList[0].distance) }} km</div>
+                    <div class="metric-label">Best DX</div>
+                    <div class="metric-sub">{{ distanceList[0].rx_sign }}</div>
+                    {% else %}
+                    <div class="metric-value">&mdash;</div>
+                    <div class="metric-label">Best DX</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col">
+                <div class="card metric-card h-100">
+                    <div class="metric-value">{{ countryList|length }}</div>
+                    <div class="metric-label">Countries Heard</div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card metric-card h-100">
+                    {% if best_snr_value is not none %}
+                    <div class="metric-value">{{ "+%d dB"|format(best_snr_value) if best_snr_value >= 0 else "%d dB"|format(best_snr_value) }}</div>
+                    <div class="metric-label">BEST SNR</div>
+                    <div class="metric-sub">{{ best_snr_call }} &middot; {{ best_snr_distance }} km</div>
+                    {% else %}
+                    <div class="metric-value">No data</div>
+                    <div class="metric-label">BEST SNR</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-3">Call Sign</dt>
+                    <dd class="col-sm-9">{{ config['CallSign'] }}</dd>
+                    <dt class="col-sm-3">Period</dt>
+                    <dd class="col-sm-9">{{ config['Period'] }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    <!-- Map tab -->
+    <div class="tab-pane fade" id="map-pane" role="tabpanel" aria-labelledby="map-tab" tabindex="0">
+        <div class="text-muted p-5 text-center">Map coming soon</div>
+    </div>
+
+    <!-- Charts tab -->
+    <div class="tab-pane fade" id="charts-pane" role="tabpanel" aria-labelledby="charts-tab" tabindex="0">
+        <div class="text-muted p-5 text-center">Charts coming soon</div>
+    </div>
+
+    <!-- Analysis tab -->
+    <div class="tab-pane fade" id="analysis-pane" role="tabpanel" aria-labelledby="analysis-tab" tabindex="0">
+        <div class="row">
+            <div class="col-md-6 mb-4">
+                {{ macros.render_table_card(title="Hourly Distance", caption="WSPR distance analysis per hour.",
+                headers=["Time", "Mean", "Min", "Max", "Spots"], rows=hourlyList, time_format="%d-%m-%Y %H:%M") }}
+            </div>
+            <div class="col-md-6 mb-4">
+                {{ macros.render_table_card(title="Top Call Signs", caption="Most frequently spotted WSPR call signs.",
+                headers=["Call Sign", "Count", "Grid"], rows=callSignList) }}
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-4">
+                {{ macros.render_table_card(title="Furthest Stations", caption="WSPR stations received from the
+                greatest distances.", headers=["Call Sign", "Grid", "Distance (km)", "Count"], rows=distanceList) }}
+            </div>
+            <div class="col-md-6 mb-4">
+                {{ macros.render_table_card(title="Countries", caption="WSPR spot counts grouped by originating
+                country.", headers=["Country", "Spots"], rows=countryList) }}
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endif %}
 {% endblock %}

@@ -3,6 +3,7 @@ import configparser
 from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory
 from dotenv import load_dotenv
 import datetime
+import pandas as pd
 import WSPR_Analytics
 
 load_dotenv()
@@ -72,16 +73,84 @@ def index():
 def dashboard():
     if not session.get('config_saved', False):
         return redirect(url_for('index'))
+
+    config = load_config(CONFIG_FILE)
     dark_mode = session.get('dark_mode', False)
+
     if request.method == "POST":
         if 'dark_toggle' in request.form:
             session['dark_mode'] = not dark_mode
             return redirect(request.url)
-    return render_template(
-        'dashboard.html',
+
+    empty_result = dict(
+        summaryData=None,
+        frequencyList=None,
+        logarithmicList=None,
+        callSignList=None,
+        distanceList=None,
+        countryList=None,
+        hourlyList=None,
+        best_snr_value=None,
+        best_snr_call=None,
+        best_snr_distance=None,
         dark_mode=dark_mode,
         show_menu=True,
-        year=datetime.datetime.now().year
+        year=datetime.datetime.now().year,
+        config=config
+    )
+
+    data_rows, error = WSPR_Analytics.getData(config['CallSign'], config['Period'])
+    if error:
+        return render_template('dashboard.html', error=error, **empty_result)
+
+    try:
+        num_bins = int(config.get('NumBins', 8))
+    except Exception:
+        num_bins = 8
+
+    summaryData, frequencyList, logarithmicList, callSignList, distanceList, countryList, hourlyList, error = WSPR_Analytics.analyseData(num_bins)
+    if error:
+        return render_template('dashboard.html', error=error, **empty_result)
+
+    try:
+        top_stations_count = int(config.get('TopStations', 10))
+    except Exception:
+        top_stations_count = 10
+
+    # Apply row limit if TopStations > 0
+    if top_stations_count > 0:
+        callSignList = callSignList[:top_stations_count]
+        distanceList = distanceList[:top_stations_count]
+
+    best_snr_value = None
+    best_snr_call = None
+    best_snr_distance = None
+    try:
+        raw_data = pd.read_csv('data/WSPR_Analytics.csv')
+        best_row = raw_data.loc[raw_data['snr'].idxmax()]
+        best_snr_value = int(best_row['snr'])
+        best_snr_call = best_row['rx_sign']
+        best_snr_distance = int(best_row['distance'])
+    except Exception:
+        pass
+
+    return render_template(
+        'dashboard.html',
+        summaryData=summaryData,
+        frequencyList=frequencyList,
+        logarithmicList=logarithmicList,
+        callSignList=callSignList,
+        distanceList=distanceList,
+        countryList=countryList,
+        hourlyList=hourlyList,
+        best_snr_value=best_snr_value,
+        best_snr_call=best_snr_call,
+        best_snr_distance=best_snr_distance,
+        error=error,
+        dark_mode=dark_mode,
+        show_menu=True,
+        year=datetime.datetime.now().year,
+        config=config
     )
 
 @app.route('/data', methods=['GET', 'POST'])
@@ -105,96 +174,6 @@ def data():
         show_menu=True,
         year=datetime.datetime.now().year
     )
-
-@app.route('/analysis', methods=['GET', 'POST'])
-def analysis():
-    if not session.get('config_saved', False):
-        return redirect(url_for('index'))
-    
-    config = load_config(CONFIG_FILE)
-
-    dark_mode = session.get('dark_mode', False)
-
-    if request.method == "POST":
-        if 'dark_toggle' in request.form:
-            session['dark_mode'] = not dark_mode
-            return redirect(request.url)
- 
-    try:
-        num_bins = int(config.get('NumBins', 8))
-    except Exception:
-        num_bins = 8
-
-    summaryData, frequencyList, logarithmicList, callSignList, distanceList, countryList, hourlyList, error = WSPR_Analytics.analyseData(num_bins)
-
-    try:
-        top_stations_count = int(config.get('TopStations', 10))
-    except Exception:
-        top_stations_count = 10
-
-    # Apply row limit if TopStations > 0
-    if top_stations_count > 0:
-        callSignList = callSignList[:top_stations_count]
-        distanceList = distanceList[:top_stations_count]
-
-
-    # --- Define your mapping dictionaries here in Python ---
-    hourly_header_map = {
-        'Time': 'Time', # Data key: 'time', Display header: 'Time'
-        'Mean': 'Mean',
-        'Min': 'Min',
-        'Max': 'Max',
-        'Spots': 'Spots'
-    }
-
-    call_sign_header_map = {
-        'rx_sign': 'Call Sign',
-        'Count': 'Count',
-        'gridRef': 'Grid'
-    }
-
-    distance_header_map = {
-        'rx_sign': 'Call Sign',
-        'distance': 'Distance (km)',
-        'rx_loc': 'Grid',
-        'Count': 'Count'
-    }    
-    
-    return render_template(
-        'analysis.html',
-        summaryData           = summaryData,
-        freqBinList           = frequencyList,
-        logBinList            = logarithmicList,
-        callSignList          = callSignList,
-        distanceList          = distanceList,
-        countryList           = countryList,
-        hourlyList            = hourlyList,
-        # --- Pass the mapping dictionaries to the template ---
-        hourly_header_map     = hourly_header_map,
-        call_sign_header_map  = call_sign_header_map,
-        distance_header_map   = distance_header_map,
-        error=error,
-        dark_mode             = dark_mode,
-        show_menu             = True,
-        year=datetime.datetime.now().year
-    )
-
-@app.route('/visualise', methods=['GET', 'POST'])
-def visualise():
-    if not session.get('config_saved', False):
-        return redirect(url_for('index'))
-    dark_mode = session.get('dark_mode', False)
-    if request.method == "POST":
-        if 'dark_toggle' in request.form:
-            session['dark_mode'] = not dark_mode
-            return redirect(request.url)
-    png_path = WSPR_Analytics.visualiseData()
-    return render_template(
-        'visualise.html', 
-        png_file=png_path, 
-        dark_mode=dark_mode, 
-        show_menu=True, 
-        year=datetime.datetime.now().year)
 
 @app.route('/static/<path:filename>')
 def staticfiles(filename):
