@@ -31,6 +31,8 @@
 | redeploy.sh created | Stop/deploy/start Gunicorn in one command | 2026-06-24 |
 | deploy.sh fixed to exclude .venv/ | Prevents copying dev venv into deployed app dir | 2026-06-24 |
 | Map time animation | Rolling window timelapse with controls, AJAX backend, pulse effect | 99bc3cf |
+| Callsign suffix stripping | Improved country resolution for /KE, /RE, -R suffixes | 8447c52 |
+| Unknown callsign flagging | Asterisk marker and note in Analysis tables | 8447c52 |
 
 ### Dashboard redesign scope
 

@@ -184,3 +184,16 @@ data-tx-lat and data-tx-lon.
 ## Implementation Order
 1. Backend: /api/spots route (Prompt 1)
 2. Frontend: animation controls + JS (Prompt 2)
+
+## Known Limitations
+
+- Animation requires a minimum of 3 hours of data
+  (see Minimum Period Gating above).
+- Page load time increases with dataset size, as the
+  Folium map is built eagerly on every `/dashboard`
+  request, regardless of whether the user opens the
+  Map tab or the animation.
+- Animation data is fetched per-frame via AJAX from
+  `data/WSPR_Analytics.csv` — if a new query is
+  submitted, the animation will use the new dataset
+  automatically on the next frame fetch.

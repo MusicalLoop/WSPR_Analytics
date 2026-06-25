@@ -100,6 +100,9 @@ request when the Dashboard route is hit. No reloading between tabs.
 - Great circle lines from QTH to each receiver
 - Distance rings at 500km, 1000km, 1500km
 - Marker click shows: callsign, distance, SNR, grid square, country
+- Time animation available via "Switch to Animation" button.
+  Rolling window and snapshot modes. AJAX-based, fetches from
+  /api/spots per frame. Minimum 3 hours of data required.
 
 **Design notes:**
 
@@ -136,14 +139,15 @@ Three planned improvements, in priority order.
 - Combined with distance layers in the same `GroupedLayerControl` panel
 - Allows isolation of specific countries for contest analysis
 
-### MEDIUM TERM — Time-based animation (still planned)
+### COMPLETED — Time-based animation (see MAP_ANIMATION.md)
 
 - JavaScript time slider to scrub through the period
 - Shows propagation paths appearing/disappearing over time
-- Reveals daily propagation cycles, grey line effects,
-  band openings
-- Implementation: TimestampedGeoJson or custom JS layer filtering
-- High visual impact for community sharing
+- Rolling window and snapshot modes, play/pause, speed control,
+  pulse effect, Leaflet timestamp overlay
+- Implementation: AJAX fetch from `/api/spots` per frame
+  (not TimestampedGeoJson — see MAP_ANIMATION.md for the
+  full spec and known limitations)
 
 ---
 
@@ -309,9 +313,11 @@ Jinja2 `{% include %}`.
 
 ### Map sizing
 
-- Map wrapper div uses `height: calc(100vh - 180px)` so the map
-  fills available vertical space (180px accounts for navbar +
-  tab bar + footer)
+- Outer map wrapper div uses `height: calc(100vh - 250px)`
+  (180px for navbar + tab bar, plus 70px to clear the fixed
+  footer — see `body { padding-bottom: 70px }` in base.html)
+  in a flex column, with the map itself `flex:1; min-height:0`
+  and the animation controls `flex-shrink:0` below it
 - The Folium-generated `.folium-map` div is forced to
   `height: 100% !important; width: 100% !important` so it
   inherits that calculated height
@@ -340,6 +346,8 @@ Jinja2 `{% include %}`.
 | Share card | Pillow | Server-side PNG generation |
 | Data analysis | pandas + numpy | Existing |
 | Country lookup | pyhamtools | Existing, caching fix applied |
+| GET /api/spots | Flask route | Returns spots for a time window (map animation per-frame fetch) |
+| GET /api/dataset-info | Flask route | Returns dataset metadata (start/end/duration/granularity) for animation initialisation |
 
 ---
 
