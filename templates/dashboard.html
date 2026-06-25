@@ -130,6 +130,20 @@
                 country.", headers=["Country", "Spots"], rows=countryList) }}
             </div>
         </div>
+        <div class="row">
+            <div class="col-md-6 mb-4">
+                {{ macros.render_table_card(title="Best Ears", caption="Stations consistently decoding weakest
+                signals (minimum 3 spots), ranked by mean SNR.",
+                headers=["Call Sign", "Distance (km)", "Spots", "Mean SNR", "Best SNR", "Worst SNR"],
+                rows=best_ears_list) }}
+            </div>
+            <div class="col-md-6 mb-4">
+                {{ macros.render_table_card(title="Most Reliable Paths", caption="Most consistent signal paths
+                (minimum 3 spots), ranked by SNR range.",
+                headers=["Call Sign", "Distance (km)", "Spots", "Mean SNR", "Best SNR", "Worst SNR", "Range"],
+                rows=reliable_paths_list) }}
+            </div>
+        </div>
     </div>
 
 </div>

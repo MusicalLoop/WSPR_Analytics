@@ -142,12 +142,12 @@ def dashboard():
 
     empty_result = dict(
         summaryData=None,
-        frequencyList=None,
-        logarithmicList=None,
         callSignList=None,
         distanceList=None,
         countryList=None,
         hourlyList=None,
+        best_ears_list=[],
+        reliable_paths_list=[],
         best_snr_value=None,
         best_snr_call=None,
         best_snr_distance=None,
@@ -242,6 +242,45 @@ def dashboard():
                     row['mean_snr'] = format_snr(snr_stats.loc[rx_sign, 'mean'], decimals=1) or 'N/A'
         except Exception as e:
             logger.warning(f"Failed to enrich call sign / distance tables: {e}")
+
+    best_ears_list = []
+    reliable_paths_list = []
+    if raw_data is not None:
+        try:
+            station_groups = raw_data.groupby('rx_sign')
+            station_stats = station_groups['snr'].agg(spots='count', mean_snr='mean', best_snr='max', worst_snr='min')
+            station_stats = station_stats[station_stats['spots'] >= 3]
+            station_stats['distance'] = station_groups['distance'].apply(lambda s: s.mode().iloc[0])
+            station_stats['snr_range_value'] = (station_stats['best_snr'] - station_stats['worst_snr']).round().astype(int)
+
+            best_ears_df = station_stats.sort_values(by='mean_snr', ascending=True).head(15)
+            best_ears_list = [
+                {
+                    'call_sign': rx_sign,
+                    'distance': int(row['distance']),
+                    'spots': int(row['spots']),
+                    'mean_snr': format_snr(row['mean_snr'], decimals=1),
+                    'best_snr': format_snr(row['best_snr'], decimals=0),
+                    'worst_snr': format_snr(row['worst_snr'], decimals=0),
+                }
+                for rx_sign, row in best_ears_df.iterrows()
+            ]
+
+            reliable_df = station_stats.sort_values(by='snr_range_value', ascending=True).head(15)
+            reliable_paths_list = [
+                {
+                    'call_sign': rx_sign,
+                    'distance': int(row['distance']),
+                    'spots': int(row['spots']),
+                    'mean_snr': format_snr(row['mean_snr'], decimals=1),
+                    'best_snr': format_snr(row['best_snr'], decimals=0),
+                    'worst_snr': format_snr(row['worst_snr'], decimals=0),
+                    'range': f"{int(row['snr_range_value'])} dB",
+                }
+                for rx_sign, row in reliable_df.iterrows()
+            ]
+        except Exception as e:
+            logger.warning(f"Failed to compute best ears / reliable paths tables: {e}")
 
     if raw_data is not None:
         try:
@@ -418,12 +457,12 @@ def dashboard():
     return render_template(
         'dashboard.html',
         summaryData=summaryData,
-        frequencyList=frequencyList,
-        logarithmicList=logarithmicList,
         callSignList=callSignList,
         distanceList=distanceList,
         countryList=countryList,
         hourlyList=hourlyList,
+        best_ears_list=best_ears_list,
+        reliable_paths_list=reliable_paths_list,
         best_snr_value=best_snr_value,
         best_snr_call=best_snr_call,
         best_snr_distance=best_snr_distance,
