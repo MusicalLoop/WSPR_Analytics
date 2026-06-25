@@ -384,7 +384,7 @@ def dashboard():
                     'Countries': list(country_feature_groups.values())
                 },
                 exclusive_groups=False,
-                collapsed=False,
+                collapsed=True,
                 position='topright'
             ).add_to(folium_map)
 
