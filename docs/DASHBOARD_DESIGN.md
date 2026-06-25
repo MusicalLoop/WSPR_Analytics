@@ -267,12 +267,6 @@ Used as map centre and propagation path origin.
 - No reading back from analysis CSVs in the application
 - WSPR_Analytics.csv retained as the raw data export file
 
-### Analysis CSV files
-
-- Controlled by WSPR_DEBUG_CSV flag in .env
-- Default: false (production — no CSVs written except raw data)
-- Set to true during development for inspection and debugging
-
 ### Template structure
 
 ```
@@ -283,15 +277,17 @@ templates/
 ├── data.html              # raw data table + export
 ├── logs.html              # log viewer
 └── partials/
-    ├── summary.html       # Summary tab content
     ├── map.html           # Map tab content
-    ├── charts.html        # Charts tab content
-    └── analysis.html      # Analysis tab content
+    └── charts.html        # Charts tab content
 ```
+
+Note: Summary and Analysis tab content is inline in
+dashboard.html; map.html and charts.html are included via
+Jinja2 `{% include %}`.
 
 ### Development workflow
 
-- Feature branch: feature/dashboard
+- Branch: main
 - Flask dev server during development (auto-reload on file changes)
 - Gunicorn for deployed instance at /opt/wspr-analytics/
 - Deploy via rsync script
