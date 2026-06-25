@@ -65,11 +65,10 @@ Edit `.env` and paste the generated key:
 vi .env
 ```
 
-Set the following values:
+Set the following value:
 
 ```
 WSPR_SECRET_KEY=your-generated-key-here
-WSPR_DEBUG_CSV=false
 ```
 
 ### 6. Create the start script
@@ -121,16 +120,44 @@ cp .env.example .env
 vi .env
 ```
 
-Set `WSPR_DEBUG_CSV=true` during development to enable analysis CSV output.
+### Create a project-local virtual environment
+
+Use a virtual environment inside the project directory for
+development — **never** activate `/opt/wspr-analytics/venv` for
+dev work. That venv belongs to the deployed Gunicorn instance;
+sharing it risks version drift between dev and production and
+makes it easy to accidentally break the running deployment.
+
+```bash
+cd ~/Development/WSPR/WSPR_Analytics
+python3 -m venv .venv
+source ~/Development/WSPR/WSPR_Analytics/.venv/bin/activate
+pip install -r requirements.txt
+```
+
+`.venv/` is already covered by `.gitignore`.
 
 ### Run with Flask dev server
 
 ```bash
-source /opt/wspr-analytics/venv/bin/activate
+source ~/Development/WSPR/WSPR_Analytics/.venv/bin/activate
 flask --app app run --debug --port 5000
 ```
 
 The dev server auto-reloads on file changes — no restart needed after editing.
+
+**Port conflict:** the dev Flask server and the deployed Gunicorn
+instance both default to port 5000. If the deployed instance is
+running on the same machine, either:
+
+- Run the dev server on a different port:
+  ```bash
+  flask --app app run --debug --port 5001
+  ```
+- Or stop Gunicorn first:
+  ```bash
+  pkill -f gunicorn
+  ```
 
 ---
 
@@ -148,6 +175,7 @@ rsync -av \
   --exclude='__pycache__/' \
   --exclude='*.pyc' \
   --exclude='.git/' \
+  --exclude='.venv/' \
   ~/Development/WSPR/WSPR_Analytics/ \
   /opt/wspr-analytics/app/
 echo "Done. Restart Gunicorn if running."
@@ -157,6 +185,31 @@ Make it executable:
 
 ```bash
 chmod +x /opt/wspr-analytics/deploy.sh
+```
+
+The `--exclude='.venv/'` line is required — without it, rsync
+copies the entire project-local dev virtual environment
+(100MB+) into the deployed app directory on every deploy.
+
+### Optional: redeploy.sh
+
+Create at `/opt/wspr-analytics/redeploy.sh` to combine stop,
+deploy, and restart into a single command:
+
+```bash
+#!/bin/bash
+echo "Stopping Gunicorn..."
+pkill -f gunicorn || true
+echo "Deploying latest code..."
+/opt/wspr-analytics/deploy.sh
+echo "Starting Gunicorn..."
+/opt/wspr-analytics/start.sh
+```
+
+Make it executable:
+
+```bash
+chmod +x /opt/wspr-analytics/redeploy.sh
 ```
 
 ---
@@ -172,11 +225,20 @@ git pull origin main
 
 ### Deploy and restart
 
+The simplest way is `redeploy.sh`, which does all three steps
+(stop Gunicorn, rsync via `deploy.sh`, restart Gunicorn) in one
+command:
+
+```bash
+/opt/wspr-analytics/redeploy.sh
+```
+
+If you only need to sync files without restarting (e.g. Gunicorn
+isn't currently running), run `deploy.sh` on its own instead:
+
 ```bash
 /opt/wspr-analytics/deploy.sh
 ```
-
-Restart Gunicorn after deploying if it is currently running.
 
 ---
 
@@ -187,3 +249,8 @@ Restart Gunicorn after deploying if it is currently running.
 - `data/` and `logs/` directories are gitignored
 - The `cty.plist` country file in `resources/` is included in the repo
 - Default port is 5000 — change in start.sh if needed
+- `requirements.txt` includes `folium` (Map tab). Folium itself is
+  a pip package, but the rendered map also loads Leaflet,
+  Bootstrap, and `leaflet-groupedlayercontrol` JS/CSS from CDNs
+  at runtime — the browser viewing the dashboard needs internet
+  access for the Map tab to render correctly

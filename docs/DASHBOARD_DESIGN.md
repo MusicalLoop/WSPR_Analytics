@@ -6,8 +6,8 @@ This document captures the agreed design decisions for the WSPR Analytics
 dashboard redesign. It serves as the reference for development and should
 be updated if decisions change.
 
-**Status:** Agreed — ready for development  
-**Branch:** feature/dashboard
+**Status:** Built and deployed  
+**Branch:** main
 
 ---
 
@@ -95,7 +95,7 @@ request when the Dashboard route is hit. No reloading between tabs.
 **Content:**
 
 - Folium interactive map
-- TX QTH marked at IO95fa (Newcastle)
+- TX QTH from configurable lat/lon in config file
 - Each receiver plotted as a clickable marker
 - Great circle lines from QTH to each receiver
 - Distance rings at 500km, 1000km, 1500km
@@ -104,8 +104,15 @@ request when the Dashboard route is hit. No reloading between tabs.
 **Design notes:**
 
 - Map is screen-only — no export for now
-- Folium HTML embedded in tab via iframe or direct embed
-- Only renders when Map tab is clicked (lazy load) to avoid slowing initial Dashboard load
+- Folium HTML embedded in tab via direct embed (not iframe) —
+  `GroupedLayerControl` silently fails to initialise inside an
+  iframe's isolated JS context, so the map's header/body/script
+  are extracted from Folium and injected directly into the page
+- **Known limitation:** the map is built eagerly on every
+  `/dashboard` request (including the country lookup via
+  pyhamtools), regardless of whether the user ever opens the
+  Map tab. The originally planned lazy-load-on-click behaviour
+  was not implemented.
 
 ---
 
@@ -113,22 +120,23 @@ request when the Dashboard route is hit. No reloading between tabs.
 
 Three planned improvements, in priority order.
 
-### SHORT TERM — Distance layer groups
+### COMPLETED — Distance layer groups (commit 2228962)
 
 - Group map markers and lines into three Folium FeatureGroups
   matching existing colour scheme: Under 500km, 500-1000km,
   Over 1000km
-- Add folium.LayerControl to map for toggling
+- Implemented via `folium.plugins.GroupedLayerControl` (not
+  `folium.LayerControl` — see Architecture Decisions)
 - All layers visible by default
 - Allows user to isolate DX contacts by hiding near-field stations
 
-### SHORT TERM — Country layer groups
+### COMPLETED — Country layer groups (commit 2228962)
 
 - Additional Folium FeatureGroups grouped by country
-- Combined with distance layers in the same LayerControl panel
+- Combined with distance layers in the same `GroupedLayerControl` panel
 - Allows isolation of specific countries for contest analysis
 
-### MEDIUM TERM — Time-based animation
+### MEDIUM TERM — Time-based animation (still planned)
 
 - JavaScript time slider to scrub through the period
 - Shows propagation paths appearing/disappearing over time
@@ -146,14 +154,16 @@ Three planned improvements, in priority order.
 **Technology:** Chart.js via CDN — no Python dependency, renders in browser
 from JSON data passed from Flask.
 
-**Content — four charts in a 2x2 grid:**
+**Content — six charts in a 2x3 grid:**
 
 | Position | Chart | Data source |
 |----------|-------|-------------|
 | Top left | Spot count by distance band (bar) | frequencyBinning |
 | Top right | SNR vs distance (scatter) | raw spots data |
-| Bottom left | Spots over time (bar per TX window) | raw spots data |
-| Bottom right | Country distribution (horizontal bar) | getCountries |
+| Middle left | Spots over time (bar per TX window) | raw spots data |
+| Middle right | Country distribution (horizontal bar) | getCountries |
+| Bottom left | Azimuth Polar Rose — spot count by compass sector (radar) | raw spots data (azimuth) |
+| Bottom right | Propagation over Time — spots (bar) + mean SNR (line), dual axis | hourlyList + raw spots data |
 
 **Design notes:**
 
@@ -167,19 +177,25 @@ from JSON data passed from Flask.
 
 **Purpose:** Detailed tabular analysis for technical users.
 
-**Content:**
+**Content — six tables in a 2x3 grid:**
 
 - Hourly distance table (Time, Mean, Min, Max, Spots)
-- Top callsigns table (Call Sign, Count, Grid)
-- Furthest stations table (Call Sign, Distance, Grid, Count)
-- Frequency binning table (Distance Range, Number of Spots)
-- Logarithmic binning table (Distance Range, Number of Spots)
+- Top callsigns table (Call Sign, Count, Grid, Distance)
+- Furthest stations table (Call Sign, Grid, Distance, Count, Best SNR, Mean SNR)
+- Countries table (Country, Spots)
+- Best Ears table (Call Sign, Distance, Spots, Mean SNR, Best SNR, Worst SNR) —
+  stations consistently decoding the weakest signals (min 3 spots), ranked by mean SNR
+- Most Reliable Paths table (Call Sign, Distance, Spots, Mean SNR, Best SNR,
+  Worst SNR, Range) — most consistent signal paths (min 3 spots), ranked by SNR range
 
 **Design notes:**
 
 - Existing analysis page content migrated here unchanged
 - Tables remain the primary format — no conversion to charts needed
 - This tab is for operators who want detail behind the visual story
+- Frequency binning and logarithmic binning tables were dropped —
+  too technical for most users and already represented visually in
+  the Charts tab (Spot Count by Distance Band)
 
 ---
 
@@ -202,6 +218,10 @@ from JSON data passed from Flask.
 ---
 
 ## Share Card Export
+
+**Status: NOT YET IMPLEMENTED.** No Pillow dependency, route, or
+template code exists for this feature. The design below is kept
+as a reference spec for when it is built.
 
 **Purpose:** Single PNG image suitable for Discord sharing.
 
@@ -282,6 +302,33 @@ templates/
 - Prevents double-submission
 - Reassures user that fetch is in progress
 
+### Bootstrap conflict (Folium)
+
+- Folium injects its own Bootstrap 5.2.2 CSS/JS into the map's
+  generated header, which conflicts with the page's own
+  Bootstrap 5.3.3 (loaded via base.html)
+- Fixed by stripping Folium's Bootstrap `<link>`/`<script>` tags
+  from `map_header_html` via regex in app.py before injecting it
+  into `{% block head %}`
+
+### Map sizing
+
+- Map wrapper div uses `height: calc(100vh - 180px)` so the map
+  fills available vertical space (180px accounts for navbar +
+  tab bar + footer)
+- The Folium-generated `.folium-map` div is forced to
+  `height: 100% !important; width: 100% !important` so it
+  inherits that calculated height
+
+### GroupedLayerControl configuration
+
+- `exclusive_groups=False` is required — the default (`True`)
+  makes the plugin force-hide every layer in a group except the
+  first one at initialisation (radio-button behaviour), which
+  contradicts the "all layers visible by default" requirement
+- With `exclusive_groups=False`, all layers render as independent
+  checkboxes and respect their own `show=True` setting
+
 ---
 
 ## Technology Stack
@@ -302,15 +349,17 @@ templates/
 
 ## Out of Scope (Parked)
 
-These items were discussed and deliberately deferred:
+These items were discussed and deliberately deferred. Note:
+**Stations tab** and **Map export** are tracked in
+`ROADMAP.md`'s Backlog instead — they are genuinely planned,
+not abandoned, so they're not listed here.
 
 | Item | Reason parked |
 |------|--------------|
-| Stations tab | Low priority, can add later |
-| Map export | Complex — Folium is HTML not PNG, defer |
 | Docker | Overkill for personal tool on stable workstation |
 | MQTT / HA integration | Solution looking for a problem for this use case |
 | History / comparison | Outside original scope |
 | Interactive charts (Plotly) | Static sufficient for now |
 | Band filtering | Single band TX, not relevant |
 | RX mode analysis | Not the purpose of this tool |
+| Scheduled auto-fetch | Manual on-demand fetch suits use case |

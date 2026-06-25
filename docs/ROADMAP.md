@@ -25,6 +25,11 @@
 | Azimuth polar rose | Compass-sector chart of spot count by bearing | 7ae6cdc (2026-06-25) |
 | Propagation over time (dual-axis) | Spots (bar) + mean SNR (line) per hour | 7ae6cdc (2026-06-25) |
 | SNR analysis tables | Best Ears and Most Reliable Paths tables in Analysis tab | 0a945b4 (2026-06-25) |
+| Distance to call signs, SNR metrics to furthest stations | Enriched Top Call Signs and Furthest Stations tables | ce3f3c4 (2026-06-25) |
+| Project-local .venv created | Avoids collision with deployed venv at /opt/wspr-analytics/venv | 2026-06-24 |
+| folium added to requirements.txt | | 2026-06-24 |
+| redeploy.sh created | Stop/deploy/start Gunicorn in one command | 2026-06-24 |
+| deploy.sh fixed to exclude .venv/ | Prevents copying dev venv into deployed app dir | 2026-06-24 |
 
 ### Dashboard redesign scope
 
