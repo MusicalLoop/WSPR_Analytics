@@ -33,6 +33,25 @@ def format_snr(value, decimals=0):
     sign = '+' if rounded >= 0 else ''
     return f"{sign}{rounded} dB"
 
+AZIMUTH_SECTOR_ORDER = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
+AZIMUTH_SECTOR_BOUNDS = [
+    ('N', 337.5, 360.0), ('N', 0.0, 22.5),
+    ('NE', 22.5, 67.5),
+    ('E', 67.5, 112.5),
+    ('SE', 112.5, 157.5),
+    ('S', 157.5, 202.5),
+    ('SW', 202.5, 247.5),
+    ('W', 247.5, 292.5),
+    ('NW', 292.5, 337.5),
+]
+
+def azimuth_sector(az):
+    az = az % 360
+    for name, lo, hi in AZIMUTH_SECTOR_BOUNDS:
+        if lo <= az < hi:
+            return name
+    return 'N'
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -136,6 +155,8 @@ def dashboard():
         freq_chart_data=json.dumps({'labels': [], 'values': []}),
         hourly_chart_data=json.dumps({'labels': [], 'values': []}),
         country_chart_data=json.dumps({'labels': [], 'values': []}),
+        azimuth_chart_data='{}',
+        propagation_chart_data='{}',
         map_header_html='',
         map_body_html='',
         map_script_html='',
@@ -360,6 +381,40 @@ def dashboard():
         'values': [row['Spots'] for row in top_countries]
     })
 
+    azimuth_chart_data = json.dumps({
+        'labels': AZIMUTH_SECTOR_ORDER,
+        'values': [0] * len(AZIMUTH_SECTOR_ORDER)
+    })
+    if raw_data is not None and 'azimuth' in raw_data.columns:
+        try:
+            sector_counts = raw_data['azimuth'].apply(azimuth_sector).value_counts()
+            azimuth_chart_data = json.dumps({
+                'labels': AZIMUTH_SECTOR_ORDER,
+                'values': [int(sector_counts.get(s, 0)) for s in AZIMUTH_SECTOR_ORDER]
+            })
+        except Exception as e:
+            logger.warning(f"Failed to compute azimuth chart data: {e}")
+
+    propagation_labels = [row['Time'].strftime('%H:%M') for row in hourlyList]
+    propagation_spots = [row['Spots'] for row in hourlyList]
+    propagation_snr = [None] * len(hourlyList)
+    if raw_data is not None:
+        try:
+            raw_time = pd.to_datetime(raw_data['time'])
+            hourly_snr = raw_data.groupby(raw_time.dt.floor('h'))['snr'].mean()
+            propagation_snr = [
+                round(float(hourly_snr[row['Time']]), 1) if row['Time'] in hourly_snr.index else None
+                for row in hourlyList
+            ]
+        except Exception as e:
+            logger.warning(f"Failed to compute hourly mean SNR: {e}")
+
+    propagation_chart_data = json.dumps({
+        'labels': propagation_labels,
+        'spots': propagation_spots,
+        'snr': propagation_snr
+    })
+
     return render_template(
         'dashboard.html',
         summaryData=summaryData,
@@ -376,6 +431,8 @@ def dashboard():
         freq_chart_data=freq_chart_data,
         hourly_chart_data=hourly_chart_data,
         country_chart_data=country_chart_data,
+        azimuth_chart_data=azimuth_chart_data,
+        propagation_chart_data=propagation_chart_data,
         map_header_html=map_header_html,
         map_body_html=map_body_html,
         map_script_html=map_script_html,

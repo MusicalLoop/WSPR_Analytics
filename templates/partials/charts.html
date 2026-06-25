@@ -26,6 +26,20 @@
         </div>
     </div>
 </div>
+<div class="row">
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header"><h5 class="mb-0">Propagation Direction</h5></div>
+            <div class="card-body"><canvas id="chartAzimuth"></canvas></div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header"><h5 class="mb-0">Propagation over Time</h5></div>
+            <div class="card-body"><canvas id="chartPropagation"></canvas></div>
+        </div>
+    </div>
+</div>
 
 <script>
 (function () {
@@ -33,6 +47,8 @@
     var snrScatterData = {{ snr_scatter_data | safe }};
     var hourlyChartData = {{ hourly_chart_data | safe }};
     var countryChartData = {{ country_chart_data | safe }};
+    var azimuthChartData = {{ azimuth_chart_data | safe }};
+    var propagationChartData = {{ propagation_chart_data | safe }};
 
     var charts = [];
 
@@ -127,6 +143,88 @@
             scales: {
                 x: { title: { display: true, text: 'Number of Spots' }, beginAtZero: true },
                 y: { title: { display: true, text: 'Country' } }
+            }
+        }
+    }));
+
+    var azimuthMax = azimuthChartData.values.length ? Math.max.apply(null, azimuthChartData.values) : 0;
+    charts.push(new Chart(document.getElementById('chartAzimuth'), {
+        type: 'radar',
+        data: {
+            labels: azimuthChartData.labels,
+            datasets: [{
+                label: 'Spot Count',
+                data: azimuthChartData.values,
+                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                pointBackgroundColor: 'rgba(54, 162, 235, 1)'
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: { display: true, text: 'Propagation Direction' },
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function (context) {
+                            return context.label + ': ' + context.raw + ' spots';
+                        }
+                    }
+                }
+            },
+            scales: {
+                r: {
+                    beginAtZero: true,
+                    ticks: { stepSize: Math.max(1, Math.ceil(azimuthMax / 5)) }
+                }
+            }
+        }
+    }));
+
+    charts.push(new Chart(document.getElementById('chartPropagation'), {
+        data: {
+            labels: propagationChartData.labels,
+            datasets: [
+                {
+                    type: 'bar',
+                    label: 'Spots',
+                    data: propagationChartData.spots,
+                    backgroundColor: 'rgba(40, 167, 69, 0.7)',
+                    yAxisID: 'ySpots'
+                },
+                {
+                    type: 'line',
+                    label: 'SNR (dB)',
+                    data: propagationChartData.snr,
+                    borderColor: 'rgba(255, 159, 64, 1)',
+                    backgroundColor: 'rgba(255, 159, 64, 0.2)',
+                    yAxisID: 'ySnr',
+                    tension: 0.3
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                title: { display: true, text: 'Propagation over Time' },
+                legend: { display: true }
+            },
+            scales: {
+                x: { title: { display: true, text: 'Time' } },
+                ySpots: {
+                    type: 'linear',
+                    position: 'left',
+                    beginAtZero: true,
+                    title: { display: true, text: 'Spots' }
+                },
+                ySnr: {
+                    type: 'linear',
+                    position: 'right',
+                    title: { display: true, text: 'SNR (dB)' },
+                    grid: { drawOnChartArea: false }
+                }
             }
         }
     }));
