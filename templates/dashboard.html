@@ -7,6 +7,27 @@
   <style>
   .folium-map { height: 100% !important; width: 100% !important; }
   </style>
+  <style>
+  @keyframes wspr-pulse {
+    0%   { transform: scale(1);   opacity: 1;   }
+    50%  { transform: scale(1.5); opacity: 0.7; }
+    100% { transform: scale(1);   opacity: 1;   }
+  }
+  .pulse-marker path {
+    animation: wspr-pulse 1.5s ease-in-out infinite;
+  }
+  .pulse-marker {
+    animation: wspr-pulse 1.5s ease-in-out infinite;
+  }
+  .wspr-timestamp-control {
+    background: rgba(255, 255, 255, 0.9);
+    padding: 4px 10px;
+    border-radius: 4px;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+    font-weight: bold;
+    font-size: 0.9rem;
+  }
+  </style>
 {% endblock %}
 
 {% block content %}
@@ -173,5 +194,381 @@
       });
     });
   });
+  </script>
+  <script>
+  (function() {
+    var controlsEl = document.getElementById('animationControls');
+    var modeBtn = document.getElementById('animationModeBtn');
+    if (!controlsEl || !modeBtn) {
+      return;
+    }
+
+    var warningEl = document.getElementById('animationWarning');
+    var blockEl = document.getElementById('animationBlock');
+    var playPauseBtn = document.getElementById('playPauseBtn');
+    var speedSlider = document.getElementById('speedSlider');
+    var speedLabel = document.getElementById('speedLabel');
+    var modeSelect = document.getElementById('modeSelect');
+    var pulseToggle = document.getElementById('pulseToggle');
+    var windowRow = document.getElementById('windowRow');
+    var windowSlider = document.getElementById('windowSlider');
+    var windowLabel = document.getElementById('windowLabel');
+    var timeSlider = document.getElementById('timeSlider');
+    var timeStartEl = document.getElementById('timeStart');
+    var timeCurrentEl = document.getElementById('timeCurrent');
+    var timeEndEl = document.getElementById('timeEnd');
+
+    var txLat = parseFloat(controlsEl.dataset.txLat);
+    var txLon = parseFloat(controlsEl.dataset.txLon);
+    var durationHours = parseFloat(controlsEl.dataset.durationHours) || 0;
+    var granularityMinutes = parseInt(controlsEl.dataset.granularityMinutes, 10) || 15;
+
+    function parseUTC(s) {
+      if (!s) return null;
+      if (!/[zZ]|[+-]\d\d:\d\d$/.test(s)) s = s + 'Z';
+      return new Date(s);
+    }
+
+    var datasetStart = parseUTC(controlsEl.dataset.datasetStart);
+    var datasetEnd = parseUTC(controlsEl.dataset.datasetEnd);
+
+    var windowSteps = [];
+    var windowMinutes = 120;
+    var mode = 'rolling';
+    var speed = 2;
+    var pulseEnabled = false;
+    var isPlaying = false;
+    var currentTime = datasetStart;
+    var playTimer = null;
+    var isAnimationMode = false;
+    var hiddenLayers = [];
+    var animationLayerGroup = null;
+    var leafletMap = null;
+    var timestampControl = null;
+
+    function getWindowSteps(hours) {
+      if (hours < 12) {
+        return [15, 30, 60, 120];
+      } else if (hours < 72) {
+        return [60, 120, 240, 360, 720];
+      } else {
+        return [120, 360, 720, 1440];
+      }
+    }
+
+    function formatWindowLabel(minutes) {
+      if (minutes < 60) {
+        return minutes + ' min';
+      }
+      if (minutes < 1440) {
+        var h = minutes / 60;
+        return (h % 1 === 0 ? h : h.toFixed(1)) + (h === 1 ? ' hour' : ' hours');
+      }
+      var d = minutes / 1440;
+      return (d === 1 ? '1 day' : d + ' days');
+    }
+
+    var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    function fmtDateTime(d) {
+      if (!d) return '';
+      var dd = d.getUTCDate();
+      var mon = MONTHS[d.getUTCMonth()];
+      var hh = String(d.getUTCHours()).padStart(2, '0');
+      var mm = String(d.getUTCMinutes()).padStart(2, '0');
+      return dd + ' ' + mon + ' ' + hh + ':' + mm;
+    }
+
+    function colourForDistance(distance) {
+      if (distance < 500) return 'green';
+      if (distance < 1000) return 'orange';
+      return 'red';
+    }
+
+    function getMapId() {
+      var el = document.querySelector('.folium-map');
+      if (el && window[el.id]) {
+        return window[el.id];
+      }
+      return null;
+    }
+
+    function setSliderFromTime() {
+      if (!datasetStart || !datasetEnd) return;
+      var total = datasetEnd - datasetStart;
+      var pct = total > 0 ? ((currentTime - datasetStart) / total) * 100 : 0;
+      pct = Math.max(0, Math.min(100, pct));
+      timeSlider.value = pct;
+    }
+
+    function updateTimeLabels() {
+      if (timeCurrentEl) {
+        timeCurrentEl.textContent = fmtDateTime(currentTime);
+      }
+    }
+
+    function getOrCreateTimestampControl() {
+      if (!leafletMap || !window.L) return null;
+      if (timestampControl) return timestampControl;
+      if (!L.Control.Timestamp) {
+        L.Control.Timestamp = L.Control.extend({
+          options: { position: 'topleft' },
+          onAdd: function() {
+            this._div = L.DomUtil.create('div', 'wspr-timestamp-control');
+            this._div.innerHTML = '';
+            return this._div;
+          },
+          update: function(html) {
+            if (this._div) this._div.innerHTML = html;
+          }
+        });
+      }
+      timestampControl = new L.Control.Timestamp();
+      timestampControl.addTo(leafletMap);
+      return timestampControl;
+    }
+
+    function removeTimestampControl() {
+      if (timestampControl && leafletMap) {
+        leafletMap.removeControl(timestampControl);
+      }
+      timestampControl = null;
+    }
+
+    function drawFrame(time) {
+      if (!leafletMap || !animationLayerGroup) return;
+      currentTime = time;
+
+      var requestStart, windowParam, requestEnd;
+      if (mode === 'snapshot') {
+        requestStart = time;
+        windowParam = granularityMinutes;
+        requestEnd = new Date(time.getTime());
+      } else {
+        requestStart = new Date(time.getTime() - (windowMinutes / 2) * 60000);
+        windowParam = windowMinutes;
+        requestEnd = new Date(requestStart.getTime() + windowMinutes * 60000);
+      }
+
+      var url = '/api/spots?start=' + encodeURIComponent(requestStart.toISOString()) +
+        '&window=' + windowParam + '&mode=' + mode;
+
+      fetch(url)
+        .then(function(resp) { return resp.json(); })
+        .then(function(data) {
+          animationLayerGroup.clearLayers();
+          if (data.spots) {
+            data.spots.forEach(function(spot) {
+              var colour = colourForDistance(spot.distance);
+              var marker = L.circleMarker([spot.rx_lat, spot.rx_lon], {
+                radius: 8,
+                color: colour,
+                fill: true,
+                fillColor: colour,
+                fillOpacity: 0.8
+              });
+              var popupHtml = '<b>' + spot.rx_sign + '</b><br>' +
+                'Distance: ' + spot.distance + ' km<br>' +
+                'SNR: ' + spot.snr + ' dB<br>' +
+                'Time: ' + spot.time;
+              marker.bindPopup(popupHtml);
+              marker.addTo(animationLayerGroup);
+
+              L.polyline([[txLat, txLon], [spot.rx_lat, spot.rx_lon]], {
+                color: colour,
+                weight: 2,
+                opacity: 0.7
+              }).addTo(animationLayerGroup);
+
+              if (pulseEnabled && marker._path) {
+                marker._path.classList.add('pulse-marker');
+              }
+            });
+          }
+
+          var control = getOrCreateTimestampControl();
+          if (control) {
+            var label;
+            if (mode === 'snapshot') {
+              label = fmtDateTime(time);
+            } else {
+              label = fmtDateTime(requestStart) + ' – ' + fmtDateTime(requestEnd);
+            }
+            control.update(label);
+          }
+
+          updateTimeLabels();
+          setSliderFromTime();
+        })
+        .catch(function() {});
+    }
+
+    function stopPlaying() {
+      isPlaying = false;
+      if (playTimer) {
+        clearInterval(playTimer);
+        playTimer = null;
+      }
+      playPauseBtn.innerHTML = '&#9654; Play';
+    }
+
+    function startPlaying() {
+      isPlaying = true;
+      playPauseBtn.innerHTML = '&#10074;&#10074; Pause';
+      if (playTimer) clearInterval(playTimer);
+      var intervalMs = 1000 / speed;
+      playTimer = setInterval(function() {
+        var next = new Date(currentTime.getTime() + granularityMinutes * 60000);
+        if (next > datasetEnd) {
+          next = new Date(datasetStart.getTime());
+        }
+        drawFrame(next);
+      }, intervalMs);
+    }
+
+    function togglePlay() {
+      if (isPlaying) {
+        stopPlaying();
+      } else {
+        startPlaying();
+      }
+    }
+
+    function applyWindowGating() {
+      if (durationHours < 3) {
+        blockEl.style.display = '';
+        modeBtn.style.display = 'none';
+        warningEl.style.display = 'none';
+      } else if (durationHours < 6) {
+        blockEl.style.display = 'none';
+        modeBtn.style.display = '';
+        warningEl.style.display = '';
+      } else {
+        blockEl.style.display = 'none';
+        modeBtn.style.display = '';
+        warningEl.style.display = 'none';
+      }
+    }
+
+    function initWindowSlider() {
+      windowSteps = getWindowSteps(durationHours);
+      windowSlider.min = 0;
+      windowSlider.max = windowSteps.length - 1;
+      windowSlider.step = 1;
+      var defaultIdx = windowSteps.indexOf(120);
+      if (defaultIdx === -1) defaultIdx = Math.min(1, windowSteps.length - 1);
+      windowSlider.value = defaultIdx;
+      windowMinutes = windowSteps[defaultIdx];
+      windowLabel.textContent = formatWindowLabel(windowMinutes);
+    }
+
+    function initTimeLabels() {
+      if (timeStartEl) timeStartEl.textContent = fmtDateTime(datasetStart);
+      if (timeEndEl) timeEndEl.textContent = fmtDateTime(datasetEnd);
+      currentTime = datasetStart;
+      updateTimeLabels();
+      timeSlider.value = 0;
+    }
+
+    document.querySelectorAll('#map-tab').forEach(function(tab) {
+      tab.addEventListener('shown.bs.tab', function() {
+        applyWindowGating();
+        initWindowSlider();
+        initTimeLabels();
+      });
+    });
+
+    modeBtn.addEventListener('click', function() {
+      leafletMap = leafletMap || getMapId();
+      if (!leafletMap) return;
+
+      if (!isAnimationMode) {
+        hiddenLayers = [];
+        leafletMap.eachLayer(function(layer) {
+          if (layer instanceof L.FeatureGroup) {
+            hiddenLayers.push(layer);
+          }
+        });
+        hiddenLayers.forEach(function(layer) {
+          leafletMap.removeLayer(layer);
+        });
+
+        var layersControlEl = document.querySelector('.leaflet-control-layers');
+        if (layersControlEl) layersControlEl.style.display = 'none';
+
+        animationLayerGroup = L.layerGroup().addTo(leafletMap);
+
+        controlsEl.style.display = '';
+        modeBtn.textContent = 'Switch to Static View';
+        isAnimationMode = true;
+
+        drawFrame(currentTime);
+      } else {
+        hiddenLayers.forEach(function(layer) {
+          layer.addTo(leafletMap);
+        });
+        hiddenLayers = [];
+
+        var layersControlEl2 = document.querySelector('.leaflet-control-layers');
+        if (layersControlEl2) layersControlEl2.style.display = '';
+
+        stopPlaying();
+        if (animationLayerGroup) {
+          animationLayerGroup.clearLayers();
+          leafletMap.removeLayer(animationLayerGroup);
+          animationLayerGroup = null;
+        }
+        removeTimestampControl();
+
+        controlsEl.style.display = 'none';
+        modeBtn.textContent = 'Switch to Animation';
+        isAnimationMode = false;
+      }
+    });
+
+    playPauseBtn.addEventListener('click', togglePlay);
+
+    document.addEventListener('keydown', function(e) {
+      if (e.code === 'Space' && isAnimationMode &&
+          document.activeElement.tagName !== 'INPUT' &&
+          document.activeElement.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        togglePlay();
+      }
+    });
+
+    timeSlider.addEventListener('input', function() {
+      stopPlaying();
+      var pct = parseFloat(timeSlider.value) / 100;
+      var total = datasetEnd - datasetStart;
+      var newTime = new Date(datasetStart.getTime() + pct * total);
+      drawFrame(newTime);
+    });
+
+    speedSlider.addEventListener('input', function() {
+      speed = parseFloat(speedSlider.value);
+      speedLabel.textContent = speed + 'x';
+      if (isPlaying) {
+        startPlaying();
+      }
+    });
+
+    modeSelect.addEventListener('change', function() {
+      mode = modeSelect.value;
+      windowRow.style.display = (mode === 'snapshot') ? 'none' : '';
+      drawFrame(currentTime);
+    });
+
+    pulseToggle.addEventListener('change', function() {
+      pulseEnabled = pulseToggle.checked;
+      drawFrame(currentTime);
+    });
+
+    windowSlider.addEventListener('input', function() {
+      var idx = parseInt(windowSlider.value, 10);
+      windowMinutes = windowSteps[idx];
+      windowLabel.textContent = formatWindowLabel(windowMinutes);
+      drawFrame(currentTime);
+    });
+  })();
   </script>
 {% endblock %}

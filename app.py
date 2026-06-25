@@ -162,6 +162,10 @@ def dashboard():
         map_script_html='',
         tx_lat=tx_lat,
         tx_lon=tx_lon,
+        dataset_start='',
+        dataset_end='',
+        duration_hours=0,
+        granularity_minutes=0,
         dark_mode=dark_mode,
         show_menu=True,
         year=datetime.datetime.now().year,
@@ -206,6 +210,10 @@ def dashboard():
     map_header_html = ''
     map_body_html = ''
     map_script_html = ''
+    dataset_start = ''
+    dataset_end = ''
+    duration_hours = 0
+    granularity_minutes = 0
     raw_data = None
     try:
         raw_data = pd.read_csv('data/WSPR_Analytics.csv')
@@ -213,6 +221,14 @@ def dashboard():
         best_snr_value = int(best_row['snr'])
         best_snr_call = best_row['rx_sign']
         best_snr_distance = int(best_row['distance'])
+
+        raw_time_full = pd.to_datetime(raw_data['time'])
+        dataset_start_dt = raw_time_full.min()
+        dataset_end_dt = raw_time_full.max()
+        dataset_start = dataset_start_dt.isoformat()
+        dataset_end = dataset_end_dt.isoformat()
+        duration_hours = (dataset_end_dt - dataset_start_dt).total_seconds() / 3600
+        granularity_minutes = granularity_minutes_for_duration(duration_hours)
 
         time_fmt = pd.to_datetime(raw_data['time']).dt.strftime('%H:%M')
         snr_scatter_data = json.dumps([
@@ -491,6 +507,10 @@ def dashboard():
         map_script_html=map_script_html,
         tx_lat=tx_lat,
         tx_lon=tx_lon,
+        dataset_start=dataset_start,
+        dataset_end=dataset_end,
+        duration_hours=duration_hours,
+        granularity_minutes=granularity_minutes,
         error=error,
         dark_mode=dark_mode,
         show_menu=True,
