@@ -30,6 +30,7 @@
 | folium added to requirements.txt | | 2026-06-24 |
 | redeploy.sh created | Stop/deploy/start Gunicorn in one command | 2026-06-24 |
 | deploy.sh fixed to exclude .venv/ | Prevents copying dev venv into deployed app dir | 2026-06-24 |
+| Map time animation | Rolling window timelapse with controls, AJAX backend, pulse effect | 99bc3cf |
 
 ### Dashboard redesign scope
 
@@ -64,7 +65,6 @@
 | SNR over time | Line chart showing band opening/closing | Medium |
 | Drift analysis | Flag receivers with clock problems | Low |
 | Single page flow | Simplified UX for non-technical OARC users | Low |
-| Map time animation | Scrub through propagation over time | Medium term |
 
 ---
 

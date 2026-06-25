@@ -1,7 +1,7 @@
 # WSPR Analytics — Map Time Animation
 
 ## Status
-Designed, not yet built. Feature branch: feature/map-animation.
+Built and deployed. Branch: main
 
 ## Overview
 A timelapse animation of WSPR propagation paths over time.
