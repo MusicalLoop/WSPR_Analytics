@@ -19,6 +19,9 @@
                 {% for row in rows %}
                 <tr>
                     {% for key, value in row.items() %}
+                    {# 'unknown_country' is bookkeeping for the unknown-country
+                    note below the tables, not a displayed column #}
+                    {% if key != 'unknown_country' %}
                     {# Handle special formatting for 'distance' and 'time' if needed #}
                     {% if key == 'distance' %}
                     <td class="text-end">{{ "{:,.0f}".format(value) }}</td>
@@ -26,6 +29,7 @@
                     <td>{{ value.strftime(time_format) }}</td>
                     {% else %}
                     <td {% if not loop.first %}class="text-end"{% endif %}>{{ value }}</td>
+                    {% endif %}
                     {% endif %}
                     {% endfor %}
                 </tr>

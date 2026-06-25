@@ -365,6 +365,9 @@ def get_country_safely(callsign, callinfo_obj):
 
     Notes:
         Returns 'Unknown' if the callsign is empty, not found, or cannot be decoded.
+        If the callsign as-is cannot be decoded, common suffixes (anything
+        after '/' or '-', e.g. HB9VQQ/KE, DC5AL-R) are stripped and the
+        lookup is retried against the base callsign before giving up.
     """
     if not callsign:
         return 'Unknown'
@@ -372,6 +375,15 @@ def get_country_safely(callsign, callinfo_obj):
         call_data = callinfo_obj.get_all(callsign)
         return call_data.get('country', 'Unknown')
     except KeyError: # Catch KeyError, as this is what get_all raises for undecodable callsigns
+        base_callsign = callsign.split('/')[0].split('-')[0]
+        if base_callsign and base_callsign != callsign:
+            try:
+                call_data = callinfo_obj.get_all(base_callsign)
+                country = call_data.get('country', 'Unknown')
+                logger.debug(f"Resolved {callsign} via stripped base {base_callsign}")
+                return country
+            except KeyError:
+                pass
         return 'Unknown'
         
 def getCountries(Data):

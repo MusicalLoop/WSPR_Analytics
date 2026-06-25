@@ -193,9 +193,11 @@ def dashboard():
 
     for row in callSignList:
         row['distance'] = 0
+        row['unknown_country'] = False
     for row in distanceList:
         row['best_snr'] = 'N/A'
         row['mean_snr'] = 'N/A'
+        row['unknown_country'] = False
 
     best_snr_value = None
     best_snr_call = None
@@ -223,6 +225,26 @@ def dashboard():
     except Exception:
         pass
 
+    # Per-callsign country lookup, mirroring WSPR_Analytics.getCountries().
+    # data/WSPR_Countries.csv only holds aggregate Country/Spots totals,
+    # not a per-callsign mapping, so it can't be read back for this.
+    # Computed once here and reused by the table enrichment, best
+    # ears / reliable paths, and map generation code below.
+    country_by_call = {}
+    if raw_data is not None:
+        try:
+            if os.path.exists(WSPR_Analytics.CTY_FILE):
+                lookup_lib = LookupLib(lookuptype="countryfile", filename=WSPR_Analytics.CTY_FILE)
+            else:
+                lookup_lib = LookupLib(lookuptype="countryfile")
+            call_info = Callinfo(lookup_lib)
+            country_by_call = {
+                call: WSPR_Analytics.get_country_safely(call, call_info)
+                for call in raw_data['rx_sign'].unique()
+            }
+        except Exception as e:
+            logger.warning(f"Failed to resolve countries: {e}")
+
     if raw_data is not None:
         try:
             distance_mode_lookup = (
@@ -233,13 +255,20 @@ def dashboard():
             snr_stats = raw_data.groupby('rx_sign')['snr'].agg(['max', 'mean'])
 
             for row in callSignList:
-                row['distance'] = distance_mode_lookup.get(row['rx_sign'], 0)
+                rx_sign = row['rx_sign']
+                row['distance'] = distance_mode_lookup.get(rx_sign, 0)
+                row['unknown_country'] = country_by_call.get(rx_sign, 'Unknown') == 'Unknown'
+                if row['unknown_country']:
+                    row['rx_sign'] = f"{rx_sign}*"
 
             for row in distanceList:
                 rx_sign = row['rx_sign']
                 if rx_sign in snr_stats.index:
                     row['best_snr'] = format_snr(snr_stats.loc[rx_sign, 'max'], decimals=0) or 'N/A'
                     row['mean_snr'] = format_snr(snr_stats.loc[rx_sign, 'mean'], decimals=1) or 'N/A'
+                row['unknown_country'] = country_by_call.get(rx_sign, 'Unknown') == 'Unknown'
+                if row['unknown_country']:
+                    row['rx_sign'] = f"{rx_sign}*"
         except Exception as e:
             logger.warning(f"Failed to enrich call sign / distance tables: {e}")
 
@@ -256,12 +285,13 @@ def dashboard():
             best_ears_df = station_stats.sort_values(by='mean_snr', ascending=True).head(15)
             best_ears_list = [
                 {
-                    'call_sign': rx_sign,
+                    'call_sign': f"{rx_sign}*" if country_by_call.get(rx_sign, 'Unknown') == 'Unknown' else rx_sign,
                     'distance': int(row['distance']),
                     'spots': int(row['spots']),
                     'mean_snr': format_snr(row['mean_snr'], decimals=1),
                     'best_snr': format_snr(row['best_snr'], decimals=0),
                     'worst_snr': format_snr(row['worst_snr'], decimals=0),
+                    'unknown_country': country_by_call.get(rx_sign, 'Unknown') == 'Unknown',
                 }
                 for rx_sign, row in best_ears_df.iterrows()
             ]
@@ -269,13 +299,14 @@ def dashboard():
             reliable_df = station_stats.sort_values(by='snr_range_value', ascending=True).head(15)
             reliable_paths_list = [
                 {
-                    'call_sign': rx_sign,
+                    'call_sign': f"{rx_sign}*" if country_by_call.get(rx_sign, 'Unknown') == 'Unknown' else rx_sign,
                     'distance': int(row['distance']),
                     'spots': int(row['spots']),
                     'mean_snr': format_snr(row['mean_snr'], decimals=1),
                     'best_snr': format_snr(row['best_snr'], decimals=0),
                     'worst_snr': format_snr(row['worst_snr'], decimals=0),
                     'range': f"{int(row['snr_range_value'])} dB",
+                    'unknown_country': country_by_call.get(rx_sign, 'Unknown') == 'Unknown',
                 }
                 for rx_sign, row in reliable_df.iterrows()
             ]
@@ -287,23 +318,6 @@ def dashboard():
             folium_map = folium.Map(location=[tx_lat, tx_lon], zoom_start=5, tiles='OpenStreetMap')
 
             receivers = raw_data.loc[raw_data.groupby('rx_sign')['snr'].idxmax()]
-
-            # Per-callsign country lookup, mirroring WSPR_Analytics.getCountries().
-            # data/WSPR_Countries.csv only holds aggregate Country/Spots totals,
-            # not a per-callsign mapping, so it can't be read back for this.
-            country_by_call = {}
-            try:
-                if os.path.exists(WSPR_Analytics.CTY_FILE):
-                    lookup_lib = LookupLib(lookuptype="countryfile", filename=WSPR_Analytics.CTY_FILE)
-                else:
-                    lookup_lib = LookupLib(lookuptype="countryfile")
-                call_info = Callinfo(lookup_lib)
-                country_by_call = {
-                    call: WSPR_Analytics.get_country_safely(call, call_info)
-                    for call in receivers['rx_sign'].unique()
-                }
-            except Exception as e:
-                logger.warning(f"Failed to resolve countries for map layers: {e}")
 
             raw_data_countries = raw_data['rx_sign'].map(country_by_call).fillna('Unknown')
             country_counts = raw_data_countries.value_counts()

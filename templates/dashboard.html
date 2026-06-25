@@ -144,6 +144,14 @@
                 rows=reliable_paths_list) }}
             </div>
         </div>
+        {% set has_unknown_country = (callSignList | selectattr('unknown_country') | list | length > 0)
+            or (distanceList | selectattr('unknown_country') | list | length > 0)
+            or (best_ears_list | selectattr('unknown_country') | list | length > 0)
+            or (reliable_paths_list | selectattr('unknown_country') | list | length > 0) %}
+        {% if has_unknown_country %}
+        <p class="text-muted small">* Callsigns marked unknown could not be resolved to a country —
+            may be SWL stations or non-standard identifiers</p>
+        {% endif %}
     </div>
 
 </div>
