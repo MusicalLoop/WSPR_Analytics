@@ -428,7 +428,9 @@
       playTimer = setInterval(function() {
         var next = new Date(currentTime.getTime() + granularityMinutes * 60000);
         if (next > datasetEnd) {
-          next = new Date(datasetStart.getTime());
+          drawFrame(datasetEnd);
+          stopPlaying();
+          return;
         }
         drawFrame(next);
       }, intervalMs);
