@@ -3,7 +3,7 @@ import re
 import json
 import logging
 import configparser
-from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory, jsonify
 from dotenv import load_dotenv
 import datetime
 import pandas as pd
@@ -497,6 +497,110 @@ def dashboard():
         year=datetime.datetime.now().year,
         config=config
     )
+
+RAW_DATA_CSV_PATH = 'data/WSPR_Analytics.csv'
+SNAPSHOT_GRANULARITY_MINUTES = 2
+
+def granularity_minutes_for_duration(duration_hours):
+    if duration_hours < 6:
+        return 15
+    elif duration_hours < 24:
+        return 30
+    elif duration_hours < 72:
+        return 60
+    else:
+        return 240
+
+@app.route('/api/dataset-info')
+def api_dataset_info():
+    if not os.path.exists(RAW_DATA_CSV_PATH):
+        return jsonify({"error": "No data available. Submit a query first."}), 404
+
+    try:
+        raw_data = pd.read_csv(RAW_DATA_CSV_PATH)
+        raw_time = pd.to_datetime(raw_data['time'])
+        start = raw_time.min()
+        end = raw_time.max()
+        duration_hours = (end - start).total_seconds() / 3600
+
+        return jsonify({
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+            "duration_hours": round(duration_hours, 2),
+            "total_spots": int(len(raw_data)),
+            "granularity_minutes": granularity_minutes_for_duration(duration_hours)
+        })
+    except Exception as e:
+        logger.warning(f"Failed to read dataset info: {e}")
+        return jsonify({"error": f"Failed to read dataset: {e}"}), 500
+
+@app.route('/api/spots')
+def api_spots():
+    start_param = request.args.get('start')
+    window_param = request.args.get('window')
+    mode_param = request.args.get('mode')
+
+    if not start_param:
+        return jsonify({"error": "Missing required parameter: start"}), 400
+    try:
+        start_dt = pd.to_datetime(start_param)
+        if pd.isna(start_dt):
+            raise ValueError("unparseable datetime")
+    except Exception:
+        return jsonify({"error": f"Invalid start datetime: {start_param!r}"}), 400
+
+    if not window_param:
+        return jsonify({"error": "Missing required parameter: window"}), 400
+    try:
+        window_minutes = int(window_param)
+        if window_minutes <= 0:
+            raise ValueError("window must be positive")
+    except (TypeError, ValueError):
+        return jsonify({"error": f"Invalid window: {window_param!r} (must be a positive integer)"}), 400
+
+    if mode_param not in ('rolling', 'snapshot'):
+        return jsonify({"error": f"Invalid mode: {mode_param!r} (must be 'rolling' or 'snapshot')"}), 400
+
+    if not os.path.exists(RAW_DATA_CSV_PATH):
+        return jsonify({"error": "No data available. Submit a query first."}), 404
+
+    try:
+        raw_data = pd.read_csv(RAW_DATA_CSV_PATH)
+        raw_data['time'] = pd.to_datetime(raw_data['time'])
+
+        if mode_param == 'snapshot':
+            window_end = start_dt + pd.Timedelta(minutes=SNAPSHOT_GRANULARITY_MINUTES)
+        else:
+            window_end = start_dt + pd.Timedelta(minutes=window_minutes)
+
+        mask = (raw_data['time'] >= start_dt) & (raw_data['time'] < window_end)
+        filtered = raw_data.loc[mask]
+
+        spots = []
+        if not filtered.empty:
+            best_idx = filtered.groupby('rx_sign')['snr'].idxmax()
+            best_rows = filtered.loc[best_idx]
+            spots = [
+                {
+                    "rx_sign": row['rx_sign'],
+                    "rx_lat": float(row['rx_lat']),
+                    "rx_lon": float(row['rx_lon']),
+                    "distance": int(row['distance']),
+                    "snr": int(row['snr']),
+                    "time": row['time'].strftime('%H:%M')
+                }
+                for _, row in best_rows.iterrows()
+            ]
+
+        return jsonify({
+            "spots": spots,
+            "window_start": start_dt.isoformat(),
+            "window_end": window_end.isoformat(),
+            "total_spots": len(spots)
+        })
+    except Exception as e:
+        logger.warning(f"Failed to compute spots for window: {e}")
+        return jsonify({"error": f"Failed to read data: {e}"}), 500
 
 @app.route('/data', methods=['GET', 'POST'])
 def data():
