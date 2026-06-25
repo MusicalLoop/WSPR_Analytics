@@ -24,6 +24,7 @@
 | Map country layer groups | Toggle by country via GroupedLayerControl | 2228962 (2026-06-24) |
 | Azimuth polar rose | Compass-sector chart of spot count by bearing | 7ae6cdc (2026-06-25) |
 | Propagation over time (dual-axis) | Spots (bar) + mean SNR (line) per hour | 7ae6cdc (2026-06-25) |
+| SNR analysis tables | Best Ears and Most Reliable Paths tables in Analysis tab | 0a945b4 (2026-06-25) |
 
 ### Dashboard redesign scope
 
