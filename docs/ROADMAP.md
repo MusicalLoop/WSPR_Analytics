@@ -22,6 +22,8 @@
 | Dashboard redesign | Tabbed dashboard, revised flow, summary cards, Folium map, Chart.js charts, analysis tables | 017463e (2026-06-24) |
 | Map distance layer groups | Toggle green/orange/red layers via GroupedLayerControl | 2228962 (2026-06-24) |
 | Map country layer groups | Toggle by country via GroupedLayerControl | 2228962 (2026-06-24) |
+| Azimuth polar rose | Compass-sector chart of spot count by bearing | 7ae6cdc (2026-06-25) |
+| Propagation over time (dual-axis) | Spots (bar) + mean SNR (line) per hour | 7ae6cdc (2026-06-25) |
 
 ### Dashboard redesign scope
 
@@ -54,7 +56,6 @@
 | Stations tab | Full receiver list, sortable, consolidated view | Low |
 | Map export | Static map PNG for share card inclusion | Low |
 | SNR over time | Line chart showing band opening/closing | Medium |
-| Azimuth rose | Polar plot of propagation bearings | Medium |
 | Drift analysis | Flag receivers with clock problems | Low |
 | Single page flow | Simplified UX for non-technical OARC users | Low |
 | Map time animation | Scrub through propagation over time | Medium term |
