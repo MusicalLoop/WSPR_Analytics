@@ -566,6 +566,8 @@ def api_spots():
         start_dt = pd.to_datetime(start_param)
         if pd.isna(start_dt):
             raise ValueError("unparseable datetime")
+        if start_dt.tzinfo is not None:
+            start_dt = start_dt.tz_localize(None)
     except Exception:
         return jsonify({"error": f"Invalid start datetime: {start_param!r}"}), 400
 

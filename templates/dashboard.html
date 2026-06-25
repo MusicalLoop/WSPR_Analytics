@@ -353,8 +353,15 @@
         '&window=' + windowParam + '&mode=' + mode;
 
       fetch(url)
-        .then(function(resp) { return resp.json(); })
+        .then(function(resp) {
+          if (!resp.ok) {
+            console.error('[wspr-anim] API error:', resp.status);
+            return;
+          }
+          return resp.json();
+        })
         .then(function(data) {
+          if (!data) return;
           animationLayerGroup.clearLayers();
           if (data.spots) {
             data.spots.forEach(function(spot) {
@@ -399,7 +406,9 @@
           updateTimeLabels();
           setSliderFromTime();
         })
-        .catch(function() {});
+        .catch(function(err) {
+          console.error('[wspr-anim] fetch error', err);
+        });
     }
 
     function stopPlaying() {

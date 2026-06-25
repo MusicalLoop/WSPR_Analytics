@@ -1,63 +1,67 @@
 {% if map_body_html %}
-<div style="width:100%; height: calc(100vh - 180px);">
-    {{ map_body_html | safe }}
-</div>
+<div style="display:flex; flex-direction:column; height:calc(100vh - 180px);">
+    <div style="flex:1; min-height:0;">
+        {{ map_body_html | safe }}
+    </div>
 
-<button id="animationModeBtn" class="btn btn-outline-primary btn-sm mt-2">
-    Switch to Animation
-</button>
-
-<div id="animationWarning" class="alert alert-warning mt-2" style="display:none">
-    Time animation works best with 6+ hours of data.
-</div>
-
-<div id="animationBlock" class="alert alert-info mt-2" style="display:none">
-    Select 3 hours or more to enable time animation.
-</div>
-
-<div id="animationControls" style="display:none"
-     data-tx-lat="{{ tx_lat }}"
-     data-tx-lon="{{ tx_lon }}"
-     data-dataset-start="{{ dataset_start }}"
-     data-dataset-end="{{ dataset_end }}"
-     data-duration-hours="{{ duration_hours }}"
-     data-granularity-minutes="{{ granularity_minutes }}">
-
-    <div class="d-flex align-items-center gap-3 mt-2 flex-wrap">
-        <button id="playPauseBtn" class="btn btn-primary btn-sm">
-            &#9654; Play
+    <div style="flex-shrink:0; max-height:200px; overflow-y:auto; padding-top:8px;">
+        <button id="animationModeBtn" class="btn btn-outline-primary btn-sm mt-2">
+            Switch to Animation
         </button>
-        <label class="mb-0 d-flex align-items-center gap-1">
-            Speed:
-            <input type="range" id="speedSlider"
-                   min="0.5" max="8" step="0.5" value="2"
-                   style="width:80px">
-            <span id="speedLabel">2x</span>
-        </label>
-        <select id="modeSelect" class="form-select form-select-sm"
-                style="width:auto">
-            <option value="rolling">Rolling Window</option>
-            <option value="snapshot">Snapshot</option>
-        </select>
-        <label class="mb-0">
-            <input type="checkbox" id="pulseToggle"> Pulse
-        </label>
-    </div>
 
-    <div id="windowRow" class="mt-2 d-flex align-items-center gap-2">
-        <label class="mb-0">Window:</label>
-        <input type="range" id="windowSlider" style="width:200px">
-        <span id="windowLabel">2 hours</span>
-    </div>
+        <div id="animationWarning" class="alert alert-warning mt-2" style="display:none">
+            Time animation works best with 6+ hours of data.
+        </div>
 
-    <div class="mt-2">
-        <input type="range" id="timeSlider"
-               min="0" max="100" value="0"
-               style="width:100%">
-        <div class="d-flex justify-content-between small text-muted">
-            <span id="timeStart"></span>
-            <span id="timeCurrent" class="fw-bold text-body"></span>
-            <span id="timeEnd"></span>
+        <div id="animationBlock" class="alert alert-info mt-2" style="display:none">
+            Select 3 hours or more to enable time animation.
+        </div>
+
+        <div id="animationControls" style="display:none"
+             data-tx-lat="{{ tx_lat }}"
+             data-tx-lon="{{ tx_lon }}"
+             data-dataset-start="{{ dataset_start }}"
+             data-dataset-end="{{ dataset_end }}"
+             data-duration-hours="{{ duration_hours }}"
+             data-granularity-minutes="{{ granularity_minutes }}">
+
+            <div class="d-flex align-items-center gap-2 mt-2 flex-wrap">
+                <button id="playPauseBtn" class="btn btn-primary btn-sm">
+                    &#9654; Play
+                </button>
+                <label class="mb-0 d-flex align-items-center gap-1">
+                    Speed:
+                    <input type="range" id="speedSlider"
+                           min="0.5" max="8" step="0.5" value="2"
+                           style="width:80px">
+                    <span id="speedLabel">2x</span>
+                </label>
+                <select id="modeSelect" class="form-select form-select-sm"
+                        style="width:auto">
+                    <option value="rolling">Rolling Window</option>
+                    <option value="snapshot">Snapshot</option>
+                </select>
+                <label class="mb-0">
+                    <input type="checkbox" id="pulseToggle"> Pulse
+                </label>
+            </div>
+
+            <div id="windowRow" class="mt-2 d-flex align-items-center gap-2">
+                <label class="mb-0">Window:</label>
+                <input type="range" id="windowSlider" style="width:200px">
+                <span id="windowLabel">2 hours</span>
+            </div>
+
+            <div class="mt-2">
+                <input type="range" id="timeSlider"
+                       min="0" max="100" value="0"
+                       style="width:100%">
+                <div class="d-flex justify-content-between small text-muted">
+                    <span id="timeStart"></span>
+                    <span id="timeCurrent" class="fw-bold text-body"></span>
+                    <span id="timeEnd"></span>
+                </div>
+            </div>
         </div>
     </div>
 </div>
