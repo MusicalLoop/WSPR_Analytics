@@ -36,6 +36,8 @@ RESOURCES_DIR    = "resources"
 LOG_DIR          = "logs"
 
 DATAFILE_NAME    = "WSPR_Analytics"
+TX_DATAFILE_NAME = "WSPR_TX"
+RX_DATAFILE_NAME = "WSPR_RX"
 SUMMARY_NAME     = "WSPR_Summary"
 BINNING_NAME     = "WSPR_Graph"
 LOG_BINNING_NAME = "WSPR_LogGraph"
@@ -179,12 +181,15 @@ def saveData(data, filename, directory="data", format="csv", **kwargs):
 
 
 
-def getData(call_sign, time_period_str):
+def getData(call_sign, time_period_str, mode='tx'):
     """
     Fetches WSPR (Weak Signal Propagation Reporter) data for a given call sign and time period.
     Args:
-        call_sign (str): The transmitter call sign to filter data.
+        call_sign (str): The call sign to filter data.
         time_period_str (str): A string representing the time period (e.g., '1h', '24h', '7d').
+        mode (str, optional): 'tx' to fetch transmissions made by call_sign (tx_sign=call_sign,
+            rx_sign=%), or 'rx' to fetch spots received by call_sign (tx_sign=%,
+            rx_sign=call_sign). Defaults to 'tx'.
     Returns:
         tuple:
             - list[dict] or None: List of data rows as dictionaries if successful, otherwise None.
@@ -198,7 +203,7 @@ def getData(call_sign, time_period_str):
         - If no data is returned for the specified period and call sign, returns (None, error_message).
         - If an error occurs during time period parsing, data fetching, or CSV parsing, returns (None, error_message).
     """
-    logger.debug(f"Starting data fetch for Call Sign: {call_sign}, Time Period: {time_period_str}")
+    logger.debug(f"Starting data fetch for Call Sign: {call_sign}, Time Period: {time_period_str}, Mode: {mode.upper()}")
     try:
         delta = parse_time_period(time_period_str)
     except Exception as e:
@@ -212,9 +217,16 @@ def getData(call_sign, time_period_str):
 
     encoded_call = urllib.parse.quote(call_sign, safe='')
 
+    if mode == 'rx':
+        tx_sign_param = '%'
+        rx_sign_param = encoded_call
+    else:
+        tx_sign_param = encoded_call
+        rx_sign_param = '%'
+
     query_url = (
         f"http://wspr.live/wspr_downloader.php?"
-        f"start={start_str}&end={end_str}&tx_sign={encoded_call}&rx_sign=%&format=CSV"
+        f"start={start_str}&end={end_str}&tx_sign={tx_sign_param}&rx_sign={rx_sign_param}&format=CSV"
     )
     logger.debug(f"Query URL: {query_url}")
     try:
@@ -225,8 +237,14 @@ def getData(call_sign, time_period_str):
         logger.error(f"Failed to fetch data: {e}")
         return None, f"Failed to fetch data: {e}"
 
-    saveData(response.text, DATAFILE_NAME, DATA_DIR, FMT_CSV)
-    
+    if mode == 'rx':
+        saveData(response.text, RX_DATAFILE_NAME, DATA_DIR, FMT_CSV)
+    else:
+        saveData(response.text, TX_DATAFILE_NAME, DATA_DIR, FMT_CSV)
+        # Backward compat: existing /api/spots, export, and animation code
+        # still read from WSPR_Analytics.csv during the TX/RX transition.
+        saveData(response.text, DATAFILE_NAME, DATA_DIR, FMT_CSV)
+
     # Parse CSV and return as table data
     try:
         csv_file = StringIO(response.text)

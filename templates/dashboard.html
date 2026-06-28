@@ -66,42 +66,42 @@
             <div class="col-12 col-sm-6 col-lg">
                 <div class="card metric-card h-100">
                     <div class="metric-value">{{ total_spots }}</div>
-                    <div class="metric-label">Total spots</div>
+                    <div class="metric-label">{{ "Total Received" if mode == 'rx' else "Total Spots" }}</div>
                 </div>
             </div>
             <div class="col-12 col-sm-6 col-lg">
                 <div class="card metric-card h-100">
                     <div class="metric-value">{{ unique_spots }}</div>
-                    <div class="metric-label">Total unique spots</div>
+                    <div class="metric-label">{{ "Unique Transmitters" if mode == 'rx' else "Total Unique Spots" }}</div>
                 </div>
             </div>
             <div class="col-12 col-sm-6 col-lg">
                 <div class="card metric-card h-100">
                     {% if distanceList and distanceList|length > 0 %}
                     <div class="metric-value">{{ "{:,.0f}".format(distanceList[0].distance) }} km</div>
-                    <div class="metric-label">Best DX</div>
+                    <div class="metric-label">{{ "Best DX Received" if mode == 'rx' else "Best DX" }}</div>
                     <div class="metric-sub">{{ distanceList[0].rx_sign }}</div>
                     {% else %}
                     <div class="metric-value">&mdash;</div>
-                    <div class="metric-label">Best DX</div>
+                    <div class="metric-label">{{ "Best DX Received" if mode == 'rx' else "Best DX" }}</div>
                     {% endif %}
                 </div>
             </div>
             <div class="col-12 col-sm-6 col-lg">
                 <div class="card metric-card h-100">
                     <div class="metric-value">{{ countryList|length }}</div>
-                    <div class="metric-label">Countries Heard</div>
+                    <div class="metric-label">{{ "Countries Received From" if mode == 'rx' else "Countries Heard" }}</div>
                 </div>
             </div>
             <div class="col-12 col-sm-6 col-lg">
                 <div class="card metric-card h-100">
                     {% if best_snr_value is not none %}
                     <div class="metric-value">{{ "+%d dB"|format(best_snr_value) if best_snr_value >= 0 else "%d dB"|format(best_snr_value) }}</div>
-                    <div class="metric-label">BEST SNR</div>
+                    <div class="metric-label">{{ "BEST SNR RECEIVED" if mode == 'rx' else "BEST SNR" }}</div>
                     <div class="metric-sub">{{ best_snr_call }} &middot; {{ best_snr_distance }} km</div>
                     {% else %}
                     <div class="metric-value">No data</div>
-                    <div class="metric-label">BEST SNR</div>
+                    <div class="metric-label">{{ "BEST SNR RECEIVED" if mode == 'rx' else "BEST SNR" }}</div>
                     {% endif %}
                 </div>
             </div>
@@ -112,6 +112,8 @@
                 <dl class="row mb-0">
                     <dt class="col-sm-3">Call Sign</dt>
                     <dd class="col-sm-9">{{ config['CallSign'] }}</dd>
+                    <dt class="col-sm-3">Mode</dt>
+                    <dd class="col-sm-9">{{ "RX — Receive" if mode == 'rx' else "TX — Transmit" }}</dd>
                     <dt class="col-sm-3">Period</dt>
                     <dd class="col-sm-9">{{ config['Period'] }}</dd>
                 </dl>
@@ -145,14 +147,14 @@
                 headers=["Time", "Mean", "Min", "Max", "Spots"], rows=hourlyList, time_format="%d-%m-%Y %H:%M") }}
             </div>
             <div class="col-md-6 mb-4">
-                {{ macros.render_table_card(title="Top Call Signs", caption="Most frequently spotted WSPR call signs.",
+                {{ macros.render_table_card(title="Top Call Signs", caption="Most frequently received WSPR transmitters." if mode == 'rx' else "Most frequently spotted WSPR call signs.",
                 headers=["Call Sign", "Count", "Grid", "Distance (km)"], rows=callSignList) }}
             </div>
         </div>
         <div class="row">
             <div class="col-md-6 mb-4">
-                {{ macros.render_table_card(title="Furthest Stations", caption="WSPR stations received from the
-                greatest distances.", headers=["Call Sign", "Grid", "Distance (km)", "Count", "Best SNR", "Mean SNR"], rows=distanceList) }}
+                {{ macros.render_table_card(title="Furthest Stations", caption="WSPR transmitters received from the
+                greatest distances." if mode == 'rx' else "WSPR stations received from the greatest distances.", headers=["Call Sign", "Grid", "Distance (km)", "Count", "Best SNR", "Mean SNR"], rows=distanceList) }}
             </div>
             <div class="col-md-6 mb-4">
                 {{ macros.render_table_card(title="Countries", caption="WSPR spot counts grouped by originating

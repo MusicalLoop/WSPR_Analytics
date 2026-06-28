@@ -6,6 +6,23 @@
         <label for="CallSign" class="form-label">Call Sign</label>
         <input type="text" class="form-control" id="CallSign" name="CallSign" maxlength="10" value="{{ config['CallSign'] }}">
     </div>
+    <div class="mb-3">
+        <label class="form-label d-block">Mode</label>
+        <div class="btn-group" role="group" aria-label="Mode">
+            <input type="radio" class="btn-check" name="Mode" id="modeTx" value="tx"
+                   {% if config['Mode'] == 'tx' %}checked{% endif %}>
+            <label class="btn btn-outline-primary" for="modeTx">TX &mdash; Transmit</label>
+
+            <input type="radio" class="btn-check" name="Mode" id="modeRx" value="rx"
+                   {% if config['Mode'] == 'rx' %}checked{% endif %}>
+            <label class="btn btn-outline-primary" for="modeRx">RX &mdash; Receive</label>
+
+            <input type="radio" class="btn-check" name="Mode" id="modeBoth" value="both" disabled
+                   {% if config['Mode'] == 'both' %}checked{% endif %}>
+            <label class="btn btn-outline-primary text-muted" for="modeBoth">Both</label>
+        </div>
+        <div class="form-text">TX: analyse your transmissions &middot; RX: analyse your received spots &middot; Both: coming soon</div>
+    </div>
     <div class="row mb-1">
         <div class="col-md-6">
             <label for="TxLat" class="form-label">Latitude</label>

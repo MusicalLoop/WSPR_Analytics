@@ -75,11 +75,13 @@ def load_config(path):
             'TopStations'  : '10',
             'NumBins'      : '8',             # New field for number of bins
             'TxLat'        : str(DEFAULT_TX_LAT),
-            'TxLon'        : str(DEFAULT_TX_LON)
+            'TxLon'        : str(DEFAULT_TX_LON),
+            'Mode'         : 'tx'
         }
     else:
         config['default'].setdefault('TxLat', str(DEFAULT_TX_LAT))
         config['default'].setdefault('TxLon', str(DEFAULT_TX_LON))
+        config['default'].setdefault('Mode', 'tx')
     return config['default']
 
 def save_config(values):
@@ -108,13 +110,18 @@ def index():
             num_bins     = request.form['NumBins']
             tx_lat       = parse_tx_coordinate(request.form.get('TxLat'), DEFAULT_TX_LAT, 'TxLat')
             tx_lon       = parse_tx_coordinate(request.form.get('TxLon'), DEFAULT_TX_LON, 'TxLon')
+            mode         = request.form.get('Mode', 'tx')
+            if mode not in ('tx', 'rx'):
+                # 'both' is disabled in the UI for now; default silently to 'tx'
+                mode = 'tx'
             values = {
                 'CallSign': call_sign,
                 'Period': period,
                 'TopStations': top_stations,
                 'NumBins': num_bins, # New field for number of bins
                 'TxLat': str(tx_lat),
-                'TxLon': str(tx_lon)
+                'TxLon': str(tx_lon),
+                'Mode': mode
             }
             save_config(values)
             session['config_saved'] = True
@@ -147,6 +154,9 @@ def dashboard():
 
     tx_lat = parse_tx_coordinate(config.get('TxLat'), DEFAULT_TX_LAT, 'TxLat')
     tx_lon = parse_tx_coordinate(config.get('TxLon'), DEFAULT_TX_LON, 'TxLon')
+    mode = config.get('Mode', 'tx')
+    if mode not in ('tx', 'rx'):
+        mode = 'tx'
 
     empty_result = dict(
         summaryData=None,
@@ -177,10 +187,11 @@ def dashboard():
         dark_mode=dark_mode,
         show_menu=True,
         year=datetime.datetime.now().year,
-        config=config
+        config=config,
+        mode=mode
     )
 
-    data_rows, error = WSPR_Analytics.getData(config['CallSign'], config['Period'])
+    data_rows, error = WSPR_Analytics.getData(config['CallSign'], config['Period'], mode=mode)
     if error:
         return render_template('dashboard.html', error=error, **empty_result)
 
@@ -189,9 +200,11 @@ def dashboard():
     except Exception:
         num_bins = 8
 
+    dataset_csv_path = f"data/{WSPR_Analytics.RX_DATAFILE_NAME}.csv" if mode == 'rx' else f"data/{WSPR_Analytics.TX_DATAFILE_NAME}.csv"
+
     raw_data = None
     try:
-        raw_data = pd.read_csv('data/WSPR_Analytics.csv')
+        raw_data = pd.read_csv(dataset_csv_path)
     except Exception as e:
         logger.warning(f"Failed to read raw data CSV: {e}")
 
@@ -512,7 +525,8 @@ def dashboard():
         dark_mode=dark_mode,
         show_menu=True,
         year=datetime.datetime.now().year,
-        config=config
+        config=config,
+        mode=mode
     )
 
 RAW_DATA_CSV_PATH = 'data/WSPR_Analytics.csv'
@@ -640,8 +654,11 @@ def data():
             redirect_url = request.path + active_tab if active_tab else request.url
             return redirect(redirect_url)
 
-    data_rows, error = WSPR_Analytics.getData(config['CallSign'], config['Period'])
-    
+    mode = config.get('Mode', 'tx')
+    if mode not in ('tx', 'rx'):
+        mode = 'tx'
+    data_rows, error = WSPR_Analytics.getData(config['CallSign'], config['Period'], mode=mode)
+
     return render_template(
         'data.html',
         data_rows=data_rows,
