@@ -33,6 +33,7 @@
 | Map time animation | Rolling window timelapse with controls, AJAX backend, pulse effect | 99bc3cf |
 | Callsign suffix stripping | Improved country resolution for /KE, /RE, -R suffixes | 8447c52 |
 | Unknown callsign flagging | Asterisk marker and note in Analysis tables | 8447c52 |
+| Share card PNG export | Downloadable beacon report image for Discord sharing (Pillow) | 38bb988 |
 
 ### Dashboard redesign scope
 
@@ -108,7 +109,6 @@ for full detail on each item.
 | Drift analysis | Flag receivers with clock problems | Low |
 | Single page flow | Simplified UX for non-technical OARC users | Low |
 | TX/RX dual mode | Full TX and RX analysis with combined view — see docs/TXRX_DESIGN.md | High |
-| Share card PNG export | Downloadable image for Discord sharing (Pillow) — see DASHBOARD_DESIGN.md | Medium |
 | Lazy-load Folium map | Build map only when Map tab first opened | Medium |
 | Cache CSV between animation frames | Avoid re-parsing on every frame | Medium |
 | QRZ.com integration | Receiver details in map popups and tables | High |
