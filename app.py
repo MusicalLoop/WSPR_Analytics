@@ -1,14 +1,16 @@
 import os
 import re
+import io
 import json
 import logging
 import configparser
-from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory, send_file, jsonify
 from dotenv import load_dotenv
 import datetime
 import pandas as pd
 import folium
 from folium.plugins import GroupedLayerControl
+from PIL import Image, ImageDraw, ImageFont
 import WSPR_Analytics
 
 logger = logging.getLogger()
@@ -683,6 +685,166 @@ def export_data():
     directory = os.path.dirname(file_path)
     filename = os.path.basename(file_path)
     return send_from_directory(directory, filename, as_attachment=True)
+
+SHARE_CARD_FONT_DIR = '/usr/share/fonts/truetype/dejavu'
+SHARE_CARD_FONT_CANDIDATES = {
+    'bold': 'DejaVuSans-Bold.ttf',
+    'regular': 'DejaVuSans.ttf',
+}
+
+def load_share_card_font(weight, size):
+    font_name = SHARE_CARD_FONT_CANDIDATES.get(weight, SHARE_CARD_FONT_CANDIDATES['regular'])
+    try:
+        return ImageFont.truetype(os.path.join(SHARE_CARD_FONT_DIR, font_name), size)
+    except Exception as e:
+        logger.warning(f"Failed to load font {font_name}: {e}; falling back to PIL default")
+        return ImageFont.load_default()
+
+def draw_centred_text(draw, y, text, font, fill, width=600):
+    text_width = draw.textlength(text, font=font)
+    x = (width - text_width) / 2
+    draw.text((x, y), text, font=font, fill=fill)
+
+def draw_mixed_line(draw, x, y, segments):
+    for text, font, fill in segments:
+        draw.text((x, y), text, font=font, fill=fill)
+        x += draw.textlength(text, font=font)
+    return x
+
+@app.route('/export-card')
+def export_card():
+    if not session.get('config_saved', False):
+        return redirect(url_for('index'))
+
+    config = load_config(CONFIG_FILE)
+    callsign = config.get('CallSign', 'Unknown')
+    period = config.get('Period', '')
+
+    if not os.path.exists(RAW_DATA_CSV_PATH):
+        return jsonify({"error": "No data available. Submit a query first."}), 404
+
+    try:
+        raw_data = pd.read_csv(RAW_DATA_CSV_PATH)
+        if raw_data.empty:
+            return jsonify({"error": "No data available."}), 404
+
+        raw_time = pd.to_datetime(raw_data['time'])
+        dataset_start_dt = raw_time.min()
+        date_display = dataset_start_dt.strftime('%-d %B %Y')
+        date_for_filename = dataset_start_dt.strftime('%Y-%m-%d')
+
+        total_spots = int(len(raw_data))
+        unique_stations = int(raw_data['rx_sign'].nunique())
+
+        best_row = raw_data.loc[raw_data['snr'].idxmax()]
+        best_snr_value = int(best_row['snr'])
+        best_snr_call = best_row['rx_sign']
+        best_snr_distance = int(best_row['distance'])
+
+        countries_path = os.path.join(WSPR_Analytics.DATA_DIR, f"{WSPR_Analytics.COUNTRIES_NAME}.{WSPR_Analytics.FMT_CSV}")
+        top_countries = []
+        if os.path.exists(countries_path):
+            countries_df = pd.read_csv(countries_path)
+            countries_df = countries_df[countries_df['Country'] != 'Unknown']
+            top_countries = countries_df['Country'].head(5).tolist()
+
+        distances_path = os.path.join(WSPR_Analytics.DATA_DIR, f"{WSPR_Analytics.DISTANCES_NAME}.{WSPR_Analytics.FMT_CSV}")
+        best_dx_call = 'N/A'
+        best_dx_km = 0
+        if os.path.exists(distances_path):
+            distances_df = pd.read_csv(distances_path)
+            if not distances_df.empty:
+                best_dx_call = distances_df.iloc[0]['rx_sign']
+                best_dx_km = int(distances_df.iloc[0]['distance'])
+    except Exception as e:
+        logger.warning(f"Failed to build share card data: {e}")
+        return jsonify({"error": f"Failed to read data: {e}"}), 404
+
+    width, height = 600, 420
+    colour_dark = '#343a40'
+    colour_muted_light = '#adb5bd'
+    colour_text_dark = '#212529'
+    colour_label = '#6c757d'
+    colour_body = '#495057'
+    colour_light_bg = '#f8f9fa'
+    colour_border = '#343a40'
+
+    img = Image.new('RGB', (width, height), '#FFFFFF')
+    draw = ImageDraw.Draw(img)
+
+    font_header_bold = load_share_card_font('bold', 22)
+    font_header_sub = load_share_card_font('regular', 14)
+    font_metric_value = load_share_card_font('bold', 36)
+    font_metric_label = load_share_card_font('regular', 12)
+    font_body_bold = load_share_card_font('bold', 15)
+    font_body_regular = load_share_card_font('regular', 15)
+    font_countries_label = load_share_card_font('bold', 12)
+    font_countries_line = load_share_card_font('regular', 16)
+    font_footer_1 = load_share_card_font('regular', 13)
+    font_footer_2 = load_share_card_font('regular', 12)
+
+    # Section 1 — Header (y 0-80)
+    draw.rectangle([0, 0, width, 80], fill=colour_dark)
+    draw_centred_text(draw, 18, f"{callsign} — WSPR Beacon Report", font_header_bold, '#FFFFFF')
+    draw_centred_text(draw, 50, f"{date_display} · {period}", font_header_sub, colour_muted_light)
+
+    # Section 2 — Key metrics (y 80-180)
+    draw.line([(0, 80), (width, 80)], fill='#dee2e6', width=1)
+    col_width = width / 2
+    metric_value_y = 105
+    metric_label_y = 150
+    total_spots_text = str(total_spots)
+    unique_stations_text = str(unique_stations)
+    tw = draw.textlength(total_spots_text, font=font_metric_value)
+    draw.text(((col_width - tw) / 2, metric_value_y), total_spots_text, font=font_metric_value, fill=colour_text_dark)
+    lw = draw.textlength('STATIONS HEARD', font=font_metric_label)
+    draw.text(((col_width - lw) / 2, metric_label_y), 'STATIONS HEARD', font=font_metric_label, fill=colour_label)
+
+    uw = draw.textlength(unique_stations_text, font=font_metric_value)
+    draw.text((col_width + (col_width - uw) / 2, metric_value_y), unique_stations_text, font=font_metric_value, fill=colour_text_dark)
+    ulw = draw.textlength('UNIQUE STATIONS', font=font_metric_label)
+    draw.text((col_width + (col_width - ulw) / 2, metric_label_y), 'UNIQUE STATIONS', font=font_metric_label, fill=colour_label)
+
+    draw.line([(col_width, 90), (col_width, 170)], fill='#dee2e6', width=1)
+
+    # Section 3 — DX and SNR (y 180-260)
+    draw.line([(0, 180), (width, 180)], fill='#dee2e6', width=1)
+    pad_x = 24
+    draw_mixed_line(draw, pad_x, 200, [
+        ('Best DX:  ', font_body_bold, colour_text_dark),
+        (f"{best_dx_call}  {best_dx_km} km", font_body_regular, colour_body),
+    ])
+    draw_mixed_line(draw, pad_x, 228, [
+        ('Best SNR: ', font_body_bold, colour_text_dark),
+        (f"{best_snr_call}  {best_snr_value} dB  {best_snr_distance} km", font_body_regular, colour_body),
+    ])
+
+    # Section 4 — Top Countries (y 260-340)
+    draw.rectangle([0, 260, width, 340], fill=colour_light_bg)
+    label_text = 'TOP COUNTRIES'
+    lblw = draw.textlength(label_text, font=font_countries_label)
+    draw.text(((width - lblw) / 2, 275), label_text, font=font_countries_label, fill=colour_label)
+    countries_line = ' · '.join(top_countries) if top_countries else 'N/A'
+    draw_centred_text(draw, 300, countries_line, font_countries_line, colour_text_dark)
+
+    # Section 5 — Footer (y 340-420)
+    draw.rectangle([0, 340, width, height], fill=colour_dark)
+    draw_centred_text(draw, 362, 'Generated by WSPR Analytics', font_footer_1, colour_muted_light)
+    draw_centred_text(draw, 385, 'github.com/MusicalLoop/WSPR_Analytics', font_footer_2, colour_label)
+
+    # Border
+    draw.rectangle([0, 0, width - 1, height - 1], outline=colour_border, width=2)
+
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='PNG')
+    img_bytes.seek(0)
+
+    return send_file(
+        img_bytes,
+        mimetype='image/png',
+        as_attachment=True,
+        download_name=f'wspr_{callsign}_{date_for_filename}.png'
+    )
 
 def period_list():
     return [

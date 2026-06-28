@@ -117,6 +117,14 @@
                 </dl>
             </div>
         </div>
+
+        {% if summaryData is not none %}
+        <a href="{{ url_for('export_card') }}"
+           class="btn btn-outline-secondary btn-sm mt-2"
+           download>
+            &#128229; Export Share Card
+        </a>
+        {% endif %}
     </div>
 
     <!-- Map tab -->
