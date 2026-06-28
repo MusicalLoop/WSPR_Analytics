@@ -400,10 +400,15 @@ def getCountries(Data):
     Args:
         Data (pd.DataFrame): Input DataFrame containing at least a 'rx_sign' column with call signs.
     Returns:
-        pd.DataFrame: DataFrame with columns ['Country', 'Spots'], sorted by spot count in descending order.
+        tuple:
+            - pd.DataFrame: DataFrame with columns ['Country', 'Spots'], sorted by spot count in descending order.
+            - dict: {rx_sign: country_name} for every unique call sign in Data — the single
+              place this expensive pyhamtools lookup is performed, so callers needing a
+              per-callsign country mapping (e.g. for map generation or table enrichment)
+              should reuse this dict rather than re-running the lookup.
     """
     # Use Call Sign to get the Country, and then list the Countries and number of spots
-    
+
     logger.debug(f"getCountries: City File: {CTY_FILE}")
 
     # Check if the local file exists before trying to use it
@@ -429,7 +434,7 @@ def getCountries(Data):
     country_counts = country_counts.sort_values(by='Spots', ascending=False)
 
     saveData(country_counts, COUNTRIES_NAME, DATA_DIR, FMT_CSV)
-    return country_counts
+    return country_counts, country_map
 
 def frequencyBinning(Data, num_bins=8):
     """
@@ -636,11 +641,15 @@ def getDistanceByHour(Data):
     return hourly_list_for_template
 
 
-def analyseData(number_of_bins=8):
+def analyseData(number_of_bins=8, raw_df=None):
     """
     Analyzes WSPR data from a CSV file and computes various summary statistics and binning results.
     Parameters:
         number_of_bins (int): The number of bins to use for frequency and logarithmic binning. Default is 8.
+        raw_df (pd.DataFrame, optional): Pre-loaded WSPR data to analyse. If provided, the CSV file
+            is not read again — callers that already have the raw DataFrame in memory (e.g. the
+            Flask dashboard route) should pass it here to avoid a redundant disk read + parse.
+            If omitted, the CSV file is read from disk as before.
     Returns:
         tuple:
             summaryData (dict): Summary statistics of the dataset.
@@ -650,25 +659,33 @@ def analyseData(number_of_bins=8):
             distanceList (list of dict): Distant call sign data records.
             countryList (list of dict): Country data records.
             hourlyList (list): Distance by hour statistics.
+            country_by_call (dict): {rx_sign: country_name} for every unique call sign —
+                the same mapping computed once inside getCountries(), returned here so
+                callers don't need to re-run the pyhamtools lookup themselves.
             error (str or None): Error message if an exception occurred, otherwise None.
     Raises:
         Exception: Logs and returns error information if any step fails.
     """
 
     logger.debug("analyseData")
-    
+
     try:
 
-        # Load the CSV file
-        logger.debug("analyseData: Loading CSV file")
-        
-        file_path = os.path.join(DATA_DIR, f"{DATAFILE_NAME}.{FMT_CSV}") 
+        if raw_df is not None:
+            logger.debug("analyseData: Using pre-loaded DataFrame")
+            df = raw_df
+        else:
+            # Load the CSV file
+            logger.debug("analyseData: Loading CSV file")
 
-        logger.debug(f"analyseData: File Path: {file_path}")
+            file_path = os.path.join(DATA_DIR, f"{DATAFILE_NAME}.{FMT_CSV}")
 
-        df = pd.read_csv(file_path) 
+            logger.debug(f"analyseData: File Path: {file_path}")
 
-        logger.debug("analyseData: File Read")
+            df = pd.read_csv(file_path)
+
+            logger.debug("analyseData: File Read")
+
         logger.debug(f"DataFrame Columns: {df.columns.tolist()}")
 
         summaryData   = getSummary(df)
@@ -676,16 +693,16 @@ def analyseData(number_of_bins=8):
         logBins       = logarithmicBinning(df, number_of_bins)
         distanceData  = getDistantCallSigns(df)
         callSignData  = getCallSignCount(df)
-        countryData   = getCountries(df)
+        countryData, country_by_call = getCountries(df)
         hourlyList    = getDistanceByHour(df)
-        
+
         # Convert tables to lists of dicts for rendering in Jinja
         freqBinList     = freqBins.to_dict(orient="records")
         logBinList      = logBins.to_dict(orient="records")
         callSignList    = callSignData.to_dict(orient="records")
         distanceList    = distanceData.to_dict(orient="records")
         countryList     = countryData.to_dict(orient="records")
-        
+
         logger.debug("analyseData: hourlyList")
         #hourlyList      = hourlyData.to_dict(orient="records")
 
@@ -700,10 +717,10 @@ def analyseData(number_of_bins=8):
 
         logger.info("analyseData completed successfully.")
 
-        return summaryData, freqBinList, logBinList, callSignList, distanceList, countryList, hourlyList, None
+        return summaryData, freqBinList, logBinList, callSignList, distanceList, countryList, hourlyList, country_by_call, None
     except Exception as e:
         logger.error(f"Error in analyseData: {e}")
-        return None, None, None, None, None, None, None, f"Error in analyseData: {e}"
+        return None, None, None, None, None, None, None, None, f"Error in analyseData: {e}"
 
 
 

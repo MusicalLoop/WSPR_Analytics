@@ -9,7 +9,6 @@ import datetime
 import pandas as pd
 import folium
 from folium.plugins import GroupedLayerControl
-from pyhamtools import Callinfo, LookupLib
 import WSPR_Analytics
 
 logger = logging.getLogger()
@@ -185,7 +184,13 @@ def dashboard():
     except Exception:
         num_bins = 8
 
-    summaryData, frequencyList, logarithmicList, callSignList, distanceList, countryList, hourlyList, error = WSPR_Analytics.analyseData(num_bins)
+    raw_data = None
+    try:
+        raw_data = pd.read_csv('data/WSPR_Analytics.csv')
+    except Exception as e:
+        logger.warning(f"Failed to read raw data CSV: {e}")
+
+    summaryData, frequencyList, logarithmicList, callSignList, distanceList, countryList, hourlyList, country_by_call, error = WSPR_Analytics.analyseData(num_bins, raw_df=raw_data)
     if error:
         return render_template('dashboard.html', error=error, **empty_result)
 
@@ -218,9 +223,7 @@ def dashboard():
     dataset_end = ''
     duration_hours = 0
     granularity_minutes = 0
-    raw_data = None
     try:
-        raw_data = pd.read_csv('data/WSPR_Analytics.csv')
         best_row = raw_data.loc[raw_data['snr'].idxmax()]
         best_snr_value = int(best_row['snr'])
         best_snr_call = best_row['rx_sign']
@@ -245,25 +248,10 @@ def dashboard():
     except Exception:
         pass
 
-    # Per-callsign country lookup, mirroring WSPR_Analytics.getCountries().
-    # data/WSPR_Countries.csv only holds aggregate Country/Spots totals,
-    # not a per-callsign mapping, so it can't be read back for this.
-    # Computed once here and reused by the table enrichment, best
-    # ears / reliable paths, and map generation code below.
-    country_by_call = {}
-    if raw_data is not None:
-        try:
-            if os.path.exists(WSPR_Analytics.CTY_FILE):
-                lookup_lib = LookupLib(lookuptype="countryfile", filename=WSPR_Analytics.CTY_FILE)
-            else:
-                lookup_lib = LookupLib(lookuptype="countryfile")
-            call_info = Callinfo(lookup_lib)
-            country_by_call = {
-                call: WSPR_Analytics.get_country_safely(call, call_info)
-                for call in raw_data['rx_sign'].unique()
-            }
-        except Exception as e:
-            logger.warning(f"Failed to resolve countries: {e}")
+    # country_by_call is returned by WSPR_Analytics.analyseData() (sourced from
+    # getCountries(), the single place this pyhamtools lookup now runs) and
+    # reused here by the table enrichment, best ears / reliable paths, and
+    # map generation code below.
 
     if raw_data is not None:
         try:
