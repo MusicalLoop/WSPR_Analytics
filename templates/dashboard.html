@@ -60,6 +60,84 @@
 
     <!-- Summary tab -->
     <div class="tab-pane fade show active" id="summary-pane" role="tabpanel" aria-labelledby="summary-tab" tabindex="0">
+        {% if mode == 'both' %}
+        {% set tx_total_spots = (tx_summaryData | selectattr('label', 'equalto', 'Total spots') | first).value if tx_summaryData else 0 %}
+        {% set tx_unique_spots = (tx_summaryData | selectattr('label', 'equalto', 'Total unique spots') | first).value if tx_summaryData else 0 %}
+        {% set rx_total_spots = (rx_summaryData | selectattr('label', 'equalto', 'Total spots') | first).value if rx_summaryData else 0 %}
+        {% set rx_unique_spots = (rx_summaryData | selectattr('label', 'equalto', 'Total unique spots') | first).value if rx_summaryData else 0 %}
+        <div class="table-responsive mb-4">
+            <table class="table table-bordered align-middle text-center">
+                <thead>
+                    <tr>
+                        <th scope="col">&nbsp;</th>
+                        <th scope="col">TX &mdash; Transmit</th>
+                        <th scope="col">RX &mdash; Receive</th>
+                        <th scope="col">Combined</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <th scope="row" class="text-start">Total Spots</th>
+                        <td>{{ tx_total_spots }}</td>
+                        <td>{{ rx_total_spots }}</td>
+                        <td>{{ combined_spots }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row" class="text-start">Stations</th>
+                        <td>{{ tx_unique_spots }}</td>
+                        <td>{{ rx_unique_spots }}</td>
+                        <td>{{ combined_unique }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row" class="text-start">Best DX</th>
+                        <td>
+                            {% if tx_distanceList and tx_distanceList|length > 0 %}
+                            {{ "{:,.0f}".format(tx_distanceList[0].distance) }} km &middot; {{ tx_distanceList[0].rx_sign }}
+                            {% else %}&mdash;{% endif %}
+                        </td>
+                        <td>
+                            {% if rx_distanceList and rx_distanceList|length > 0 %}
+                            {{ "{:,.0f}".format(rx_distanceList[0].distance) }} km &middot; {{ rx_distanceList[0].rx_sign }}
+                            {% else %}&mdash;{% endif %}
+                        </td>
+                        <td>&mdash;</td>
+                    </tr>
+                    <tr>
+                        <th scope="row" class="text-start">Countries</th>
+                        <td>{{ tx_countryList|length }}</td>
+                        <td>{{ rx_countryList|length }}</td>
+                        <td>{{ combined_countries }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row" class="text-start">Best SNR</th>
+                        <td>
+                            {% if tx_best_snr_value is not none %}
+                            {{ "+%d dB"|format(tx_best_snr_value) if tx_best_snr_value >= 0 else "%d dB"|format(tx_best_snr_value) }} &middot; {{ tx_best_snr_call }}
+                            {% else %}&mdash;{% endif %}
+                        </td>
+                        <td>
+                            {% if rx_best_snr_value is not none %}
+                            {{ "+%d dB"|format(rx_best_snr_value) if rx_best_snr_value >= 0 else "%d dB"|format(rx_best_snr_value) }} &middot; {{ rx_best_snr_call }}
+                            {% else %}&mdash;{% endif %}
+                        </td>
+                        <td>&mdash;</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <p class="mb-1">
+                    <strong>Confirmed two-way paths:</strong>
+                    {{ symmetric_count }} station{{ "s" if symmetric_count != 1 else "" }} heard you AND you heard them
+                </p>
+                {% if symmetric_count > 0 %}
+                <p class="text-muted small mb-0">{{ symmetric_calls | join(', ') }}</p>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
         {% set total_spots = (summaryData | selectattr('label', 'equalto', 'Total spots') | first).value %}
         {% set unique_spots = (summaryData | selectattr('label', 'equalto', 'Total unique spots') | first).value %}
         <div class="row mb-4">
@@ -106,6 +184,7 @@
                 </div>
             </div>
         </div>
+        {% endif %}
 
         <div class="card">
             <div class="card-body">
@@ -113,7 +192,12 @@
                     <dt class="col-sm-3">Call Sign</dt>
                     <dd class="col-sm-9">{{ config['CallSign'] }}</dd>
                     <dt class="col-sm-3">Mode</dt>
-                    <dd class="col-sm-9">{{ "RX — Receive" if mode == 'rx' else "TX — Transmit" }}</dd>
+                    <dd class="col-sm-9">
+                        {% if mode == 'both' %}TX + RX &mdash; Both
+                        {% elif mode == 'rx' %}RX &mdash; Receive
+                        {% else %}TX &mdash; Transmit
+                        {% endif %}
+                    </dd>
                     <dt class="col-sm-3">Period</dt>
                     <dd class="col-sm-9">{{ config['Period'] }}</dd>
                 </dl>

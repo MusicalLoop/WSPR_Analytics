@@ -2,6 +2,7 @@ import os
 import re
 import io
 import json
+import time
 import logging
 import configparser
 from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory, send_file, jsonify
@@ -17,6 +18,7 @@ logger = logging.getLogger()
 
 DEFAULT_TX_LAT = 51.5
 DEFAULT_TX_LON = -0.5
+WSPR_LIVE_COOLDOWN_SECONDS = 5.5
 
 def parse_tx_coordinate(value, default, field_name):
     try:
@@ -52,6 +54,91 @@ def azimuth_sector(az):
         if lo <= az < hi:
             return name
     return 'N'
+
+RX_NORMALIZE_COLUMNS = {
+    'tx_sign': 'rx_sign', 'rx_sign': 'tx_sign',
+    'tx_lat': 'rx_lat', 'rx_lat': 'tx_lat',
+    'tx_lon': 'rx_lon', 'rx_lon': 'tx_lon',
+    'tx_loc': 'rx_loc', 'rx_loc': 'tx_loc',
+    'azimuth': 'rx_azimuth', 'rx_azimuth': 'azimuth',
+}
+
+def normalize_rx_dataframe(df):
+    """
+    RX-mode CSVs have rx_sign fixed to the user's own callsign on every row
+    (tx_sign is the remote station). Every analysis function (getSummary,
+    getDistantCallSigns, getCallSignCount, getCountries, best SNR/DX lookups,
+    map building) is written assuming 'rx_sign' is the station of interest,
+    so RX data is column-swapped to match that shape before analysis:
+    rx_sign/rx_lat/rx_lon/rx_loc/rx_azimuth become the remote station,
+    tx_sign/tx_lat/tx_lon/tx_loc/azimuth become the user's own QTH.
+    """
+    return df.rename(columns=RX_NORMALIZE_COLUMNS)
+
+def dataset_csv_path_for_mode(single_mode):
+    name = WSPR_Analytics.RX_DATAFILE_NAME if single_mode == 'rx' else WSPR_Analytics.TX_DATAFILE_NAME
+    return f"data/{name}.csv"
+
+def fetch_and_analyse(call_sign, period, single_mode, num_bins):
+    """
+    Fetches and analyses a single TX or RX dataset: getData() + read CSV
+    (normalized for RX) + analyseData() + best SNR/DX lookup. Used directly
+    for TX-only/RX-only mode, and twice (once per side) for Both mode.
+    Returns (result_dict, error). result_dict is None if error is set.
+    """
+    data_rows, error = WSPR_Analytics.getData(call_sign, period, mode=single_mode)
+    if error:
+        return None, error
+
+    raw_data = None
+    try:
+        raw_data = pd.read_csv(dataset_csv_path_for_mode(single_mode))
+        if single_mode == 'rx':
+            raw_data = normalize_rx_dataframe(raw_data)
+    except Exception as e:
+        logger.warning(f"Failed to read raw data CSV for mode {single_mode}: {e}")
+        return None, f"Failed to read raw data CSV for mode {single_mode}: {e}"
+
+    # analyseData() falls back to reading DATAFILE_NAME from disk when raw_df
+    # is None — that fallback exists for callers with no in-memory frame at
+    # all, and would silently substitute a stale, unrelated dataset here.
+    summaryData, frequencyList, logarithmicList, callSignList, distanceList, countryList, hourlyList, country_by_call, error = (
+        WSPR_Analytics.analyseData(num_bins, raw_df=raw_data)
+    )
+    if error:
+        return None, error
+
+    best_snr_value = None
+    best_snr_call = None
+    best_snr_distance = None
+    try:
+        best_row = raw_data.loc[raw_data['snr'].idxmax()]
+        best_snr_value = int(best_row['snr'])
+        best_snr_call = best_row['rx_sign']
+        best_snr_distance = int(best_row['distance'])
+    except Exception:
+        pass
+
+    return dict(
+        raw_data=raw_data,
+        summaryData=summaryData,
+        frequencyList=frequencyList,
+        logarithmicList=logarithmicList,
+        callSignList=callSignList,
+        distanceList=distanceList,
+        countryList=countryList,
+        hourlyList=hourlyList,
+        country_by_call=country_by_call,
+        best_snr_value=best_snr_value,
+        best_snr_call=best_snr_call,
+        best_snr_distance=best_snr_distance,
+    ), None
+
+def total_spots_of(summary_list):
+    if not summary_list:
+        return 0
+    item = next((r for r in summary_list if r['label'] == 'Total spots'), None)
+    return item['value'] if item else 0
 
 load_dotenv()
 
@@ -111,8 +198,7 @@ def index():
             tx_lat       = parse_tx_coordinate(request.form.get('TxLat'), DEFAULT_TX_LAT, 'TxLat')
             tx_lon       = parse_tx_coordinate(request.form.get('TxLon'), DEFAULT_TX_LON, 'TxLon')
             mode         = request.form.get('Mode', 'tx')
-            if mode not in ('tx', 'rx'):
-                # 'both' is disabled in the UI for now; default silently to 'tx'
+            if mode not in ('tx', 'rx', 'both'):
                 mode = 'tx'
             values = {
                 'CallSign': call_sign,
@@ -155,8 +241,9 @@ def dashboard():
     tx_lat = parse_tx_coordinate(config.get('TxLat'), DEFAULT_TX_LAT, 'TxLat')
     tx_lon = parse_tx_coordinate(config.get('TxLon'), DEFAULT_TX_LON, 'TxLon')
     mode = config.get('Mode', 'tx')
-    if mode not in ('tx', 'rx'):
+    if mode not in ('tx', 'rx', 'both'):
         mode = 'tx'
+    primary_mode = 'tx' if mode == 'both' else mode
 
     empty_result = dict(
         summaryData=None,
@@ -191,26 +278,56 @@ def dashboard():
         mode=mode
     )
 
-    data_rows, error = WSPR_Analytics.getData(config['CallSign'], config['Period'], mode=mode)
-    if error:
-        return render_template('dashboard.html', error=error, **empty_result)
-
     try:
         num_bins = int(config.get('NumBins', 8))
     except Exception:
         num_bins = 8
 
-    dataset_csv_path = f"data/{WSPR_Analytics.RX_DATAFILE_NAME}.csv" if mode == 'rx' else f"data/{WSPR_Analytics.TX_DATAFILE_NAME}.csv"
-
-    raw_data = None
-    try:
-        raw_data = pd.read_csv(dataset_csv_path)
-    except Exception as e:
-        logger.warning(f"Failed to read raw data CSV: {e}")
-
-    summaryData, frequencyList, logarithmicList, callSignList, distanceList, countryList, hourlyList, country_by_call, error = WSPR_Analytics.analyseData(num_bins, raw_df=raw_data)
+    primary, error = fetch_and_analyse(config['CallSign'], config['Period'], primary_mode, num_bins)
     if error:
         return render_template('dashboard.html', error=error, **empty_result)
+
+    raw_data = primary['raw_data']
+    summaryData = primary['summaryData']
+    frequencyList = primary['frequencyList']
+    logarithmicList = primary['logarithmicList']
+    callSignList = primary['callSignList']
+    distanceList = primary['distanceList']
+    countryList = primary['countryList']
+    hourlyList = primary['hourlyList']
+    country_by_call = primary['country_by_call']
+
+    # Both mode: fetch + analyse the RX side too (TX side is the primary
+    # dataset above), then derive symmetric-path and combined metrics for
+    # the Summary tab's three-column layout. The other tabs (Map, Charts,
+    # Analysis) still render from the TX dataset only — RX/combined views
+    # for those tabs are phases 5-7, not yet implemented.
+    tx_result = rx_result = None
+    symmetric_calls = []
+    symmetric_count = 0
+    combined_spots = 0
+    combined_unique = 0
+    combined_countries = 0
+    if mode == 'both':
+        tx_result = primary
+        # wspr.live enforces a 5s cooldown between requests from the same
+        # client; firing the RX query immediately after the TX query above
+        # gets rejected with an HTML "let the server cool down" error page.
+        time.sleep(WSPR_LIVE_COOLDOWN_SECONDS)
+        rx_result, rx_error = fetch_and_analyse(config['CallSign'], config['Period'], 'rx', num_bins)
+        if rx_error:
+            logger.warning(f"Both mode: RX dataset fetch/analysis failed: {rx_error}")
+            rx_result = None
+
+        tx_remote_calls = set(tx_result['raw_data']['rx_sign'].unique()) if tx_result['raw_data'] is not None else set()
+        rx_remote_calls = set(rx_result['raw_data']['rx_sign'].unique()) if rx_result and rx_result['raw_data'] is not None else set()
+        symmetric_calls = sorted(tx_remote_calls & rx_remote_calls)
+        symmetric_count = len(symmetric_calls)
+        combined_unique = len(tx_remote_calls | rx_remote_calls)
+        combined_spots = total_spots_of(tx_result['summaryData']) + total_spots_of(rx_result['summaryData'] if rx_result else None)
+        tx_countries_set = {row['Country'] for row in tx_result['countryList']}
+        rx_countries_set = {row['Country'] for row in (rx_result['countryList'] if rx_result else [])}
+        combined_countries = len(tx_countries_set | rx_countries_set)
 
     try:
         top_stations_count = int(config.get('TopStations', 10))
@@ -221,6 +338,8 @@ def dashboard():
     if top_stations_count > 0:
         callSignList = callSignList[:top_stations_count]
         distanceList = distanceList[:top_stations_count]
+        if rx_result:
+            rx_result['distanceList'] = rx_result['distanceList'][:top_stations_count]
 
     for row in callSignList:
         row['distance'] = 0
@@ -526,7 +645,24 @@ def dashboard():
         show_menu=True,
         year=datetime.datetime.now().year,
         config=config,
-        mode=mode
+        mode=mode,
+        tx_summaryData=tx_result['summaryData'] if tx_result else None,
+        rx_summaryData=rx_result['summaryData'] if rx_result else None,
+        tx_distanceList=tx_result['distanceList'] if tx_result else [],
+        rx_distanceList=rx_result['distanceList'] if rx_result else [],
+        tx_countryList=tx_result['countryList'] if tx_result else [],
+        rx_countryList=rx_result['countryList'] if rx_result else [],
+        tx_best_snr_value=best_snr_value if mode == 'both' else None,
+        rx_best_snr_value=rx_result['best_snr_value'] if rx_result else None,
+        tx_best_snr_call=best_snr_call if mode == 'both' else None,
+        rx_best_snr_call=rx_result['best_snr_call'] if rx_result else None,
+        tx_best_snr_distance=best_snr_distance if mode == 'both' else None,
+        rx_best_snr_distance=rx_result['best_snr_distance'] if rx_result else None,
+        symmetric_count=symmetric_count,
+        symmetric_calls=symmetric_calls,
+        combined_spots=combined_spots,
+        combined_unique=combined_unique,
+        combined_countries=combined_countries
     )
 
 RAW_DATA_CSV_PATH = 'data/WSPR_Analytics.csv'
