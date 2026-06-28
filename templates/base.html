@@ -44,37 +44,45 @@
     <nav class="navbar navbar-expand-lg navbar-dark">
         <div class="container-fluid">
             <a class="navbar-brand" href="/">WSPR Analytics</a>
-            {% if show_menu %}
-            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                <li class="nav-item">
-                    <a class="nav-link {% if request.endpoint == 'index' %}active{% endif %}"
-                       href="{{ url_for('index') }}">Configuration</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}"
-                       href="{{ url_for('dashboard') }}">Dashboard</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {% if request.endpoint == 'data' %}active{% endif %}"
-                       href="{{ url_for('data') }}">Data</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {% if request.endpoint == 'logs' %}active{% endif %}"
-                       href="{{ url_for('logs') }}">Logs</a>
-                </li>
-            </ul>
-            {% else %}
-            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                <li class="nav-item">
-                    <a class="nav-link active" href="{{ url_for('index') }}">Configuration</a>
-                </li>
-            </ul>
-            {% endif %}
+            <button class="navbar-toggler" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#navbarContent"
+                    aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarContent">
+                {% if show_menu %}
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'index' %}active{% endif %}"
+                           href="{{ url_for('index') }}">Configuration</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}"
+                           href="{{ url_for('dashboard') }}">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'data' %}active{% endif %}"
+                           href="{{ url_for('data') }}">Data</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'logs' %}active{% endif %}"
+                           href="{{ url_for('logs') }}">Logs</a>
+                    </li>
+                </ul>
+                {% else %}
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="{{ url_for('index') }}">Configuration</a>
+                    </li>
+                </ul>
+                {% endif %}
+            </div>
             <div class="d-flex ms-auto align-items-center gap-2">
                 {% if request.endpoint == 'data' %}
                 <a href="{{ url_for('export_data') }}" class="btn btn-outline-light btn-sm">Export CSV</a>
                 {% endif %}
-                <form method="post" class="mb-0">
+                <form method="post" class="mb-0" id="darkToggleForm">
+                    <input type="hidden" name="active_tab" id="activeTabInput" value="">
                     <button type="submit" name="dark_toggle" class="btn btn-outline-light btn-sm">
                         {% if dark_mode %}Light{% else %}Dark{% endif %}
                     </button>
@@ -89,6 +97,20 @@
         Copyright {{ year }} Andy Holmes: 2E0IJC &nbsp;|&nbsp; Licenced under GPL v3
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    (function() {
+      var darkToggleForm = document.getElementById('darkToggleForm');
+      var activeTabInput = document.getElementById('activeTabInput');
+      if (darkToggleForm && activeTabInput) {
+        darkToggleForm.addEventListener('submit', function() {
+          var activeTab = document.querySelector('.nav-link.active[data-bs-toggle="tab"]');
+          if (activeTab) {
+            activeTabInput.value = activeTab.getAttribute('href') || activeTab.getAttribute('data-bs-target');
+          }
+        });
+      }
+    })();
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

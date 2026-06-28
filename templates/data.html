@@ -4,6 +4,7 @@
 {% if error %}
 <div class="alert alert-danger">{{ error }}</div>
 {% elif data_rows %}
+<div class="table-responsive">
 <table class="table table-bordered table-striped table-sm">
   <thead>
     <tr>
@@ -22,6 +23,7 @@
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% else %}
 <p>No data to display.</p>
 {% endif %}

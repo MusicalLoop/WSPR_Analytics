@@ -63,19 +63,19 @@
         {% set total_spots = (summaryData | selectattr('label', 'equalto', 'Total spots') | first).value %}
         {% set unique_spots = (summaryData | selectattr('label', 'equalto', 'Total unique spots') | first).value %}
         <div class="row mb-4">
-            <div class="col">
+            <div class="col-12 col-sm-6 col-lg">
                 <div class="card metric-card h-100">
                     <div class="metric-value">{{ total_spots }}</div>
                     <div class="metric-label">Total spots</div>
                 </div>
             </div>
-            <div class="col">
+            <div class="col-12 col-sm-6 col-lg">
                 <div class="card metric-card h-100">
                     <div class="metric-value">{{ unique_spots }}</div>
                     <div class="metric-label">Total unique spots</div>
                 </div>
             </div>
-            <div class="col">
+            <div class="col-12 col-sm-6 col-lg">
                 <div class="card metric-card h-100">
                     {% if distanceList and distanceList|length > 0 %}
                     <div class="metric-value">{{ "{:,.0f}".format(distanceList[0].distance) }} km</div>
@@ -87,13 +87,13 @@
                     {% endif %}
                 </div>
             </div>
-            <div class="col">
+            <div class="col-12 col-sm-6 col-lg">
                 <div class="card metric-card h-100">
                     <div class="metric-value">{{ countryList|length }}</div>
                     <div class="metric-label">Countries Heard</div>
                 </div>
             </div>
-            <div class="col">
+            <div class="col-12 col-sm-6 col-lg">
                 <div class="card metric-card h-100">
                     {% if best_snr_value is not none %}
                     <div class="metric-value">{{ "+%d dB"|format(best_snr_value) if best_snr_value >= 0 else "%d dB"|format(best_snr_value) }}</div>
@@ -185,15 +185,41 @@
   {{ map_script_html | safe }}
   </script>
   <script>
+  var wsprLegendAdded = false;
   document.querySelectorAll('#map-tab').forEach(function(tab) {
     tab.addEventListener('shown.bs.tab', function() {
       document.querySelectorAll('.folium-map').forEach(function(el) {
-        if (window[el.id] && window[el.id].invalidateSize) {
-          window[el.id].invalidateSize();
+        var mapInstance = window[el.id];
+        if (mapInstance && mapInstance.invalidateSize) {
+          mapInstance.invalidateSize();
+        }
+        if (mapInstance && window.L && !wsprLegendAdded) {
+          var LegendControl = L.Control.extend({
+            options: { position: 'bottomleft' },
+            onAdd: function() {
+              var div = L.DomUtil.create('div', 'wspr-timestamp-control');
+              div.innerHTML =
+                '<div><span style="color:green">&#9679;</span> Under 500 km</div>' +
+                '<div><span style="color:orange">&#9679;</span> 500 &ndash; 1,000 km</div>' +
+                '<div><span style="color:red">&#9679;</span> Over 1,000 km</div>';
+              return div;
+            }
+          });
+          new LegendControl().addTo(mapInstance);
+          wsprLegendAdded = true;
         }
       });
     });
   });
+  </script>
+  <script>
+  (function() {
+    if (!window.location.hash) return;
+    var targetBtn = document.querySelector('[data-bs-toggle="tab"][data-bs-target="' + window.location.hash + '"]');
+    if (targetBtn && window.bootstrap && window.bootstrap.Tab) {
+      bootstrap.Tab.getOrCreateInstance(targetBtn).show();
+    }
+  })();
   </script>
   <script>
   (function() {
@@ -245,6 +271,8 @@
     var animationLayerGroup = null;
     var leafletMap = null;
     var timestampControl = null;
+    var noSpotsControl = null;
+    var noSpotsHideTimer = null;
 
     function getWindowSteps(hours) {
       if (hours < 12) {
@@ -334,6 +362,42 @@
       timestampControl = null;
     }
 
+    function getOrCreateNoSpotsControl() {
+      if (!leafletMap || !window.L) return null;
+      if (noSpotsControl) return noSpotsControl;
+      if (!L.Control.NoSpots) {
+        L.Control.NoSpots = L.Control.extend({
+          options: { position: 'bottomleft' },
+          onAdd: function() {
+            this._div = L.DomUtil.create('div', 'wspr-timestamp-control text-muted');
+            this._div.style.display = 'none';
+            this._div.textContent = 'No spots in this window';
+            return this._div;
+          },
+          show: function() {
+            if (this._div) this._div.style.display = '';
+          },
+          hide: function() {
+            if (this._div) this._div.style.display = 'none';
+          }
+        });
+      }
+      noSpotsControl = new L.Control.NoSpots();
+      noSpotsControl.addTo(leafletMap);
+      return noSpotsControl;
+    }
+
+    function removeNoSpotsControl() {
+      if (noSpotsHideTimer) {
+        clearTimeout(noSpotsHideTimer);
+        noSpotsHideTimer = null;
+      }
+      if (noSpotsControl && leafletMap) {
+        leafletMap.removeControl(noSpotsControl);
+      }
+      noSpotsControl = null;
+    }
+
     function drawFrame(time) {
       if (!leafletMap || !animationLayerGroup) return;
       currentTime = time;
@@ -363,6 +427,23 @@
         .then(function(data) {
           if (!data) return;
           animationLayerGroup.clearLayers();
+
+          var noSpots = getOrCreateNoSpotsControl();
+          if (noSpotsHideTimer) {
+            clearTimeout(noSpotsHideTimer);
+            noSpotsHideTimer = null;
+          }
+          if (!data.spots || data.spots.length === 0) {
+            if (noSpots) {
+              noSpots.show();
+              noSpotsHideTimer = setTimeout(function() {
+                noSpots.hide();
+              }, 2000);
+            }
+          } else if (noSpots) {
+            noSpots.hide();
+          }
+
           if (data.spots) {
             data.spots.forEach(function(spot) {
               var colour = colourForDistance(spot.distance);
@@ -529,6 +610,7 @@
           animationLayerGroup = null;
         }
         removeTimestampControl();
+        removeNoSpotsControl();
 
         controlsEl.style.display = 'none';
         modeBtn.textContent = 'Switch to Animation';

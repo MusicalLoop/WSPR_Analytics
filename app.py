@@ -119,11 +119,12 @@ def index():
             return redirect(url_for('dashboard'))
         elif 'reset' in request.form:
             values = reset_config()
-            session['config_saved'] = False
-            return render_template('index.html', config=values, periods=period_list(), dark_mode=dark_mode, show_menu=False, year=datetime.datetime.now().year)
+            return render_template('index.html', config=values, periods=period_list(), dark_mode=dark_mode, show_menu=show_menu, year=datetime.datetime.now().year)
         elif 'dark_toggle' in request.form:
             session['dark_mode'] = not dark_mode
-            return redirect(request.url)
+            active_tab = request.form.get('active_tab', '')
+            redirect_url = request.path + active_tab if active_tab else request.url
+            return redirect(redirect_url)
     config = load_config(CONFIG_FILE if show_menu else DEFAULT_FILE)
     return render_template('index.html', config=config, periods=period_list(), dark_mode=dark_mode, show_menu=show_menu, year=datetime.datetime.now().year)
 
@@ -138,7 +139,9 @@ def dashboard():
     if request.method == "POST":
         if 'dark_toggle' in request.form:
             session['dark_mode'] = not dark_mode
-            return redirect(request.url)
+            active_tab = request.form.get('active_tab', '')
+            redirect_url = request.path + active_tab if active_tab else request.url
+            return redirect(redirect_url)
 
     tx_lat = parse_tx_coordinate(config.get('TxLat'), DEFAULT_TX_LAT, 'TxLat')
     tx_lon = parse_tx_coordinate(config.get('TxLon'), DEFAULT_TX_LON, 'TxLon')
@@ -631,8 +634,10 @@ def data():
     if request.method == "POST":
         if 'dark_toggle' in request.form:
             session['dark_mode'] = not dark_mode
-            return redirect(request.url)
-            
+            active_tab = request.form.get('active_tab', '')
+            redirect_url = request.path + active_tab if active_tab else request.url
+            return redirect(redirect_url)
+
     data_rows, error = WSPR_Analytics.getData(config['CallSign'], config['Period'])
     
     return render_template(
