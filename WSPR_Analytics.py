@@ -27,6 +27,7 @@ from logging.handlers import TimedRotatingFileHandler
 import pandas as pd
 from pyhamtools import Callinfo, LookupLib
 import numpy as np
+import urllib.parse
 
 ## Constants ##
 
@@ -208,9 +209,12 @@ def getData(call_sign, time_period_str):
     start_time = end_time - delta
     start_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
     end_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
+
+    encoded_call = urllib.parse.quote(call_sign, safe='')
+
     query_url = (
         f"http://wspr.live/wspr_downloader.php?"
-        f"start={start_str}&end={end_str}&tx_sign={call_sign}&rx_sign=%&format=CSV"
+        f"start={start_str}&end={end_str}&tx_sign={encoded_call}&rx_sign=%&format=CSV"
     )
     logger.debug(f"Query URL: {query_url}")
     try:
@@ -442,9 +446,19 @@ def frequencyBinning(Data, num_bins=8):
     """
 
     logger.debug("frequencyBinning")
-    
+
     # Distance binning using pd.qcut for equal frequency bins
     logger.debug(f"frequencyBinning: Number of Bins: {num_bins}")
+
+    n_distinct = Data['distance'].nunique()
+    if n_distinct == 0:
+        distance_table = pd.DataFrame({"Distance Range": [], "Number of Spots": []})
+        saveData(distance_table, BINNING_NAME, DATA_DIR, FMT_CSV)
+        return distance_table
+
+    if n_distinct < num_bins:
+        logger.debug(f"Reduced bins from {num_bins} to {n_distinct} due to insufficient distinct distance values")
+        num_bins = max(1, n_distinct)
 
     Data['FrequencyBin'] = pd.qcut(Data['distance'], q=num_bins)
 
@@ -458,9 +472,9 @@ def frequencyBinning(Data, num_bins=8):
         "Distance Range": distance_counts.index,
         "Number of Spots": distance_counts.values
     })
-    
+
     logger.debug(f"FrequencyBin: {distance_table}")
-    
+
     saveData(distance_table, BINNING_NAME, DATA_DIR, FMT_CSV)
     return distance_table
 
@@ -481,6 +495,29 @@ def logarithmicBinning(Data, num_bins=8):
 
     logger.debug("logarithmicBinning")
     logger.debug(f"logarithmicBinning: Number of Bins: {num_bins}")
+
+    n_distinct = Data['distance'].nunique()
+    if n_distinct == 0:
+        distance_table = pd.DataFrame({"Distance Range": [], "Number of Spots": []})
+        saveData(distance_table, LOG_BINNING_NAME, DATA_DIR, FMT_CSV)
+        return distance_table
+
+    if n_distinct < num_bins:
+        logger.debug(f"Reduced bins from {num_bins} to {n_distinct} due to insufficient distinct distance values")
+        num_bins = max(1, n_distinct)
+
+    if n_distinct == 1:
+        # log_min == log_max for a single distinct distance value, which would
+        # give pd.cut duplicate bin edges and raise — build the single-bin
+        # result directly instead.
+        only_distance = int(Data['distance'].iloc[0])
+        distance_table = pd.DataFrame({
+            "Distance Range": [f"{only_distance}-{only_distance} km"],
+            "Number of Spots": [len(Data)]
+        })
+        logger.debug(f"logarithmicBinning: {distance_table}")
+        saveData(distance_table, LOG_BINNING_NAME, DATA_DIR, FMT_CSV)
+        return distance_table
 
     # Apply logarithmic transformation (using log1p to handle distance = 0 if any)
     Data['distance_log'] = np.log1p(Data['distance']) # log(1+x)

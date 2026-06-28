@@ -56,6 +56,10 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('WSPR_SECRET_KEY', 'wspr-analytics-dev-key')
+if app.secret_key == 'wspr-analytics-dev-key':
+    logger.warning(
+        "WSPR_SECRET_KEY not set — using insecure default key. Set WSPR_SECRET_KEY in .env"
+    )
 
 CONFIG_FILE = 'WSPR_Analytics.conf'
 DEFAULT_FILE = 'WSPR_Analytics.ini'
@@ -533,6 +537,9 @@ def granularity_minutes_for_duration(duration_hours):
 
 @app.route('/api/dataset-info')
 def api_dataset_info():
+    if not session.get('config_saved', False):
+        return jsonify({'error': 'No active session. Submit a query first.'}), 401
+
     if not os.path.exists(RAW_DATA_CSV_PATH):
         return jsonify({"error": "No data available. Submit a query first."}), 404
 
@@ -556,6 +563,9 @@ def api_dataset_info():
 
 @app.route('/api/spots')
 def api_spots():
+    if not session.get('config_saved', False):
+        return jsonify({'error': 'No active session. Submit a query first.'}), 401
+
     start_param = request.args.get('start')
     window_param = request.args.get('window')
     mode_param = request.args.get('mode')
@@ -652,6 +662,9 @@ def staticfiles(filename):
 
 @app.route('/logs')
 def logs():
+    if not session.get('config_saved', False):
+        return redirect(url_for('index'))
+
     import os
     log_path = os.path.join('logs', 'WSPR_Analytics.log')
     try:
@@ -670,6 +683,9 @@ def logs():
 
 @app.route('/export-data')
 def export_data():
+    if not session.get('config_saved', False):
+        return redirect(url_for('index'))
+
     file_path = "data/WSPR_Analytics.csv"
     directory = os.path.dirname(file_path)
     filename = os.path.basename(file_path)
