@@ -58,15 +58,60 @@
 
 ---
 
+## Review Findings — 2026-06-25
+
+Findings from a full design, functionality, and usability review of the
+Dashboard redesign and map animation feature. See conversation history
+for full detail on each item.
+
+### Critical (bugs or security)
+
+| Issue | Description | Complexity |
+|-------|-------------|------------|
+| qcut crash on short periods | pd.qcut raises ValueError with few distinct distance values — triggered by 10/30 min presets and single-spot datasets | Low |
+| URL encoding missing | call_sign not URL-encoded in wspr.live query — injection risk with special characters | Low |
+| Session gate missing | /export-data, /logs, /api/spots, /api/dataset-info have no config_saved check unlike other routes | Low |
+| Secret key fallback silent | Falls back to hardcoded key with no warning logged if WSPR_SECRET_KEY not set | Low |
+
+### Performance
+
+| Issue | Description | Complexity |
+|-------|-------------|------------|
+| Duplicate country lookup | pyhamtools runs twice per request — once in analyseData(), once in dashboard route | Low |
+| Double CSV read | data/WSPR_Analytics.csv read twice per request independently | Low |
+| Animation frame CSV re-parse | Entire CSV re-parsed on every animation frame — lags at high speed on large datasets | Medium |
+| Eager Folium map build | Map built on every /dashboard request even if Map tab never opened | Medium |
+
+### Usability and Design
+
+| Issue | Description | Complexity |
+|-------|-------------|------------|
+| Dark mode incomplete | Chart.js and Folium/Leaflet not adapted — charts unreadable in dark mode | Medium |
+| No navbar collapse | No hamburger menu below lg breakpoint — mobile nav broken | Low |
+| Metric cards not responsive | Five equal-width cards compress badly on mobile | Low |
+| Data table not responsive | 18-column table has no .table-responsive wrapper | Low |
+| No map colour legend | No explanation of green/orange/red distance coding | Low |
+| Dark mode resets tab | Toggling dark mode reloads page and resets to Summary tab | Medium |
+| Reset hides nav | Reset button sets show_menu=False unexpectedly | Low |
+| Empty animation window | Zero spots in animation window shows nothing — no message | Low |
+| Terminology | SNR, DX, Grid, SWL unexplained for non-technical users | Low |
+
+---
+
 ## Backlog
 
 | Item | Description | Priority |
 |------|-------------|----------|
-| Stations tab | Full receiver list, sortable, consolidated view | Low |
+| Stations tab | Full receiver list, sortable, consolidated view | Medium |
 | Map export | Static map PNG for share card inclusion | Low |
 | SNR over time | Line chart showing band opening/closing | Medium |
 | Drift analysis | Flag receivers with clock problems | Low |
 | Single page flow | Simplified UX for non-technical OARC users | Low |
+| TX/RX dual mode | Full TX and RX analysis with combined view — see docs/TXRX_DESIGN.md | High |
+| Share card PNG export | Downloadable image for Discord sharing (Pillow) — see DASHBOARD_DESIGN.md | Medium |
+| Lazy-load Folium map | Build map only when Map tab first opened | Medium |
+| Cache CSV between animation frames | Avoid re-parsing on every frame | Medium |
+| QRZ.com integration | Receiver details in map popups and tables | High |
 
 ---
 
