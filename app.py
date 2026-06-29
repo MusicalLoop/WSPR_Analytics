@@ -74,7 +74,7 @@ def adaptive_ring_distances(max_distance_km):
 def draw_distance_rings(folium_map, tx_lat, tx_lon, max_distance_km):
     """Draws dashed distance rings (adaptive_ring_distances) centred on the
     TX QTH, each labelled with its distance due south of the QTH (clamped
-    to -60° latitude so labels for large rings don't run off a Mercator
+    to -80° latitude so labels for large rings don't run off a Mercator
     map)."""
     for ring_radius_km in adaptive_ring_distances(max_distance_km):
         folium.Circle(
@@ -86,7 +86,7 @@ def draw_distance_rings(folium_map, tx_lat, tx_lon, max_distance_km):
         ).add_to(folium_map)
 
         label_lat = tx_lat - (ring_radius_km / 111.0)
-        label_lat = max(label_lat, -60.0)
+        label_lat = max(label_lat, -80.0)
         label_lon = tx_lon
         folium.Marker(
             location=[label_lat, label_lon],
@@ -230,8 +230,9 @@ def build_chart_series(result):
 
     raw_data = result['raw_data']
     frequencyList = result['frequencyList']
-    hourlyList = result['hourlyList']
+    hourlyList = sorted(result['hourlyList'], key=lambda r: r['Time'])
     countryList = result['countryList']
+    hourly_fmt = hourly_time_format(hourlyList)
 
     series = dict(EMPTY_CHART_SERIES)
 
@@ -241,7 +242,7 @@ def build_chart_series(result):
     })
 
     series['hourly_chart_data'] = json.dumps({
-        'labels': [row['Time'].strftime('%H:%M') for row in hourlyList],
+        'labels': [row['Time'].strftime(hourly_fmt) for row in hourlyList],
         'values': [row['Spots'] for row in hourlyList]
     })
 
@@ -276,7 +277,7 @@ def build_chart_series(result):
         except Exception as e:
             logger.warning(f"Failed to compute azimuth chart data: {e}")
 
-    propagation_labels = [row['Time'].strftime('%H:%M') for row in hourlyList]
+    propagation_labels = [row['Time'].strftime(hourly_fmt) for row in hourlyList]
     propagation_spots = [row['Spots'] for row in hourlyList]
     propagation_snr = [None] * len(hourlyList)
     try:
@@ -1139,9 +1140,11 @@ def dashboard():
         'values': [row['Number of Spots'] for row in frequencyList]
     })
 
+    hourlyList_sorted = sorted(hourlyList, key=lambda r: r['Time'])
+
     hourly_chart_data = json.dumps({
-        'labels': [row['Time'].strftime('%H:%M') for row in hourlyList],
-        'values': [row['Spots'] for row in hourlyList]
+        'labels': [row['Time'].strftime(hourly_time_fmt) for row in hourlyList_sorted],
+        'values': [row['Spots'] for row in hourlyList_sorted]
     })
 
     top_countries = countryList[:10]
@@ -1164,16 +1167,16 @@ def dashboard():
         except Exception as e:
             logger.warning(f"Failed to compute azimuth chart data: {e}")
 
-    propagation_labels = [row['Time'].strftime('%H:%M') for row in hourlyList]
-    propagation_spots = [row['Spots'] for row in hourlyList]
-    propagation_snr = [None] * len(hourlyList)
+    propagation_labels = [row['Time'].strftime(hourly_time_fmt) for row in hourlyList_sorted]
+    propagation_spots = [row['Spots'] for row in hourlyList_sorted]
+    propagation_snr = [None] * len(hourlyList_sorted)
     if raw_data is not None:
         try:
             raw_time = pd.to_datetime(raw_data['time'])
             hourly_snr = raw_data.groupby(raw_time.dt.floor('h'))['snr'].mean()
             propagation_snr = [
                 round(float(hourly_snr[row['Time']]), 1) if row['Time'] in hourly_snr.index else None
-                for row in hourlyList
+                for row in hourlyList_sorted
             ]
         except Exception as e:
             logger.warning(f"Failed to compute hourly mean SNR: {e}")
