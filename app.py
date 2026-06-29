@@ -433,6 +433,17 @@ def combine_country_lists(tx_list, rx_list):
     result.sort(key=lambda r: r['total'], reverse=True)
     return result
 
+def hourly_time_format(hourly_list):
+    """
+    Picks a strftime format for an hourlyList's 'Time' column: plain HH:MM
+    when every row falls on the same calendar date, or a short date+time
+    ("28 Jun 20:00") when the dataset spans more than one day — otherwise
+    rows from different days but the same hour (e.g. two days' 12:00)
+    are visually indistinguishable.
+    """
+    dates = {row['Time'].date() for row in hourly_list}
+    return "%d %b %H:%M" if len(dates) > 1 else "%H:%M"
+
 def combine_hourly_lists(tx_list, rx_list):
     """Both mode Analysis tab: merges the TX and RX Hourly Distance tables
     into one row per unique hour. Sorted chronologically — the Time column
@@ -447,11 +458,16 @@ def combine_hourly_lists(tx_list, rx_list):
         entry['rx_mean'] = row['Mean']
         entry['rx_spots'] = row['Spots']
 
+    # The merge key above is always the full Timestamp (never just HH:MM),
+    # so same-hour entries on different days are never collapsed together —
+    # this only controls how that already-correct Timestamp is displayed.
+    time_fmt = "%d %b %H:%M" if len({ts.date() for ts in merged.keys()}) > 1 else "%H:%M"
+
     result = []
     for time_key in sorted(merged.keys()):
         v = merged[time_key]
         result.append({
-            'time': time_key.strftime('%H:%M'),
+            'time': time_key.strftime(time_fmt),
             'tx_mean': f"{v['tx_mean']:.2f}" if v['tx_mean'] is not None else '—',
             'tx_spots': v['tx_spots'] if v['tx_spots'] is not None else '—',
             'rx_mean': f"{v['rx_mean']:.2f}" if v['rx_mean'] is not None else '—',
@@ -792,6 +808,16 @@ def dashboard():
 
     tx_countryList = tx_result['countryList'] if tx_result else []
     rx_countryList = rx_result['countryList'] if rx_result else []
+
+    # Hourly Distance Time column: HH:MM when the dataset is a single
+    # calendar day, "28 Jun 20:00" when it spans more than one — otherwise
+    # multi-day periods show the same HH:MM label once per day. hourlyList
+    # is also tx_hourlyList's underlying data in Both mode (aliased above),
+    # so this one format covers the single-mode table and the Both-mode
+    # TX-only view; rx_hourlyList gets its own since RX's date range can
+    # differ from TX's.
+    hourly_time_fmt = hourly_time_format(hourlyList)
+    rx_hourly_time_fmt = hourly_time_format(rx_hourlyList)
 
     # Both mode: side-by-side combined tables for the Analysis tab's [All]
     # filter view — one row per unique station/country/hour across both
@@ -1190,7 +1216,9 @@ def dashboard():
         combined_callsign_list=combined_callsign_list,
         combined_distance_list=combined_distance_list,
         combined_country_list=combined_country_list,
-        combined_hourly_list=combined_hourly_list
+        combined_hourly_list=combined_hourly_list,
+        hourly_time_fmt=hourly_time_fmt,
+        rx_hourly_time_fmt=rx_hourly_time_fmt
     )
 
 RAW_DATA_CSV_PATH = 'data/WSPR_Analytics.csv'

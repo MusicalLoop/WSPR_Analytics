@@ -29,10 +29,10 @@
             {# 'unknown_country' is bookkeeping for the unknown-country
             note below the tables, not a displayed column #}
             {% if key != 'unknown_country' %}
-            {# Handle special formatting for 'distance' and 'time' if needed #}
+            {# Handle special formatting for 'distance' and 'Time' if needed #}
             {% if key == 'distance' %}
             <td class="text-end">{{ "{:,.0f}".format(value) }}</td>
-            {% elif key == 'time' and time_format %}
+            {% elif key == 'Time' and time_format %}
             <td>{{ value.strftime(time_format) }}</td>
             {% else %}
             <td {% if not loop.first %}class="text-end"{% endif %}>{{ value }}</td>

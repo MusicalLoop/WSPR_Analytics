@@ -278,17 +278,17 @@
                         </div>
                         <div id="hourly-tx" style="display:none">
                             {{ macros.render_table_rows(caption="WSPR distance analysis per hour — TX dataset.",
-                            headers=["Time", "Mean", "Min", "Max", "Spots"], rows=tx_hourlyList, time_format="%d-%m-%Y %H:%M") }}
+                            headers=["Time", "Mean", "Min", "Max", "Spots"], rows=tx_hourlyList, time_format=hourly_time_fmt) }}
                         </div>
                         <div id="hourly-rx" style="display:none">
                             {{ macros.render_table_rows(caption="WSPR distance analysis per hour — RX dataset.",
-                            headers=["Time", "Mean", "Min", "Max", "Spots"], rows=rx_hourlyList, time_format="%d-%m-%Y %H:%M") }}
+                            headers=["Time", "Mean", "Min", "Max", "Spots"], rows=rx_hourlyList, time_format=rx_hourly_time_fmt) }}
                         </div>
                     </div>
                 </div>
                 {% else %}
                 {{ macros.render_table_card(title="Hourly Distance", caption="WSPR distance analysis per hour.",
-                headers=["Time", "Mean", "Min", "Max", "Spots"], rows=hourlyList, time_format="%d-%m-%Y %H:%M") }}
+                headers=["Time", "Mean", "Min", "Max", "Spots"], rows=hourlyList, time_format=hourly_time_fmt) }}
                 {% endif %}
             </div>
             <div class="col-md-6 mb-4">
