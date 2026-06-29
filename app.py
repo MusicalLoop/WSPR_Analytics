@@ -1224,6 +1224,37 @@ def dashboard():
 RAW_DATA_CSV_PATH = 'data/WSPR_Analytics.csv'
 SNAPSHOT_GRANULARITY_MINUTES = 2
 
+def resolve_api_dataset_csv_path(dataset):
+    """
+    TX/RX dataset CSV path for the /api/spots and /api/dataset-info
+    animation endpoints. 'tx' prefers data/WSPR_TX.csv but falls back to
+    the legacy data/WSPR_Analytics.csv (pre-TX/RX-mode deployments, or a
+    session predating this CSV split). 'rx' has no such legacy fallback.
+    """
+    if dataset == 'rx':
+        return dataset_csv_path_for_mode('rx')
+    tx_path = dataset_csv_path_for_mode('tx')
+    return tx_path if os.path.exists(tx_path) else RAW_DATA_CSV_PATH
+
+def read_dataset_for_api(dataset):
+    """
+    Reads + normalizes (for RX) a TX/RX CSV for the animation endpoints.
+    Returns a DataFrame with 'time' parsed to datetime, or None if the
+    file doesn't exist or fails to parse.
+    """
+    path = resolve_api_dataset_csv_path(dataset)
+    if not os.path.exists(path):
+        return None
+    try:
+        df = pd.read_csv(path)
+        df['time'] = pd.to_datetime(df['time'])
+        if dataset == 'rx':
+            df = normalize_rx_dataframe(df)
+        return df
+    except Exception as e:
+        logger.warning(f"Failed to read dataset CSV for {dataset}: {e}")
+        return None
+
 def granularity_minutes_for_duration(duration_hours):
     if duration_hours < 6:
         return 15
@@ -1239,21 +1270,37 @@ def api_dataset_info():
     if not session.get('config_saved', False):
         return jsonify({'error': 'No active session. Submit a query first.'}), 401
 
-    if not os.path.exists(RAW_DATA_CSV_PATH):
-        return jsonify({"error": "No data available. Submit a query first."}), 404
+    dataset_param = request.args.get('dataset', 'tx')
+    if dataset_param not in ('tx', 'rx', 'both'):
+        dataset_param = 'tx'
 
     try:
-        raw_data = pd.read_csv(RAW_DATA_CSV_PATH)
-        raw_time = pd.to_datetime(raw_data['time'])
-        start = raw_time.min()
-        end = raw_time.max()
+        if dataset_param == 'both':
+            tx_data = read_dataset_for_api('tx')
+            rx_data = read_dataset_for_api('rx')
+            non_empty = [df for df in (tx_data, rx_data) if df is not None and not df.empty]
+            if not non_empty:
+                return jsonify({"error": "No data available. Submit a query first."}), 404
+
+            start = min(df['time'].min() for df in non_empty)
+            end = max(df['time'].max() for df in non_empty)
+            total_spots = sum(len(df) for df in non_empty)
+        else:
+            raw_data = read_dataset_for_api(dataset_param)
+            if raw_data is None:
+                return jsonify({"error": "No data available. Submit a query first."}), 404
+
+            start = raw_data['time'].min()
+            end = raw_data['time'].max()
+            total_spots = len(raw_data)
+
         duration_hours = (end - start).total_seconds() / 3600
 
         return jsonify({
             "start": start.isoformat(),
             "end": end.isoformat(),
             "duration_hours": round(duration_hours, 2),
-            "total_spots": int(len(raw_data)),
+            "total_spots": int(total_spots),
             "granularity_minutes": granularity_minutes_for_duration(duration_hours)
         })
     except Exception as e:
@@ -1268,6 +1315,9 @@ def api_spots():
     start_param = request.args.get('start')
     window_param = request.args.get('window')
     mode_param = request.args.get('mode')
+    dataset_param = request.args.get('dataset', 'tx')
+    if dataset_param not in ('tx', 'rx', 'both'):
+        dataset_param = 'tx'
 
     if not start_param:
         return jsonify({"error": "Missing required parameter: start"}), 400
@@ -1292,26 +1342,22 @@ def api_spots():
     if mode_param not in ('rolling', 'snapshot'):
         return jsonify({"error": f"Invalid mode: {mode_param!r} (must be 'rolling' or 'snapshot')"}), 400
 
-    if not os.path.exists(RAW_DATA_CSV_PATH):
-        return jsonify({"error": "No data available. Submit a query first."}), 404
-
     try:
-        raw_data = pd.read_csv(RAW_DATA_CSV_PATH)
-        raw_data['time'] = pd.to_datetime(raw_data['time'])
-
         if mode_param == 'snapshot':
             window_end = start_dt + pd.Timedelta(minutes=SNAPSHOT_GRANULARITY_MINUTES)
         else:
             window_end = start_dt + pd.Timedelta(minutes=window_minutes)
 
-        mask = (raw_data['time'] >= start_dt) & (raw_data['time'] < window_end)
-        filtered = raw_data.loc[mask]
-
-        spots = []
-        if not filtered.empty:
+        def spots_in_window(raw_data):
+            if raw_data is None:
+                return []
+            mask = (raw_data['time'] >= start_dt) & (raw_data['time'] < window_end)
+            filtered = raw_data.loc[mask]
+            if filtered.empty:
+                return []
             best_idx = filtered.groupby('rx_sign')['snr'].idxmax()
             best_rows = filtered.loc[best_idx]
-            spots = [
+            return [
                 {
                     "rx_sign": row['rx_sign'],
                     "rx_lat": float(row['rx_lat']),
@@ -1322,6 +1368,29 @@ def api_spots():
                 }
                 for _, row in best_rows.iterrows()
             ]
+
+        if dataset_param == 'both':
+            tx_data = read_dataset_for_api('tx')
+            rx_data = read_dataset_for_api('rx')
+            if tx_data is None and rx_data is None:
+                return jsonify({"error": "No data available. Submit a query first."}), 404
+
+            tx_spots = spots_in_window(tx_data)
+            rx_spots = spots_in_window(rx_data)
+
+            return jsonify({
+                "tx_spots": tx_spots,
+                "rx_spots": rx_spots,
+                "window_start": start_dt.isoformat(),
+                "window_end": window_end.isoformat(),
+                "total_spots": len(tx_spots) + len(rx_spots)
+            })
+
+        raw_data = read_dataset_for_api(dataset_param)
+        if raw_data is None:
+            return jsonify({"error": "No data available. Submit a query first."}), 404
+
+        spots = spots_in_window(raw_data)
 
         return jsonify({
             "spots": spots,

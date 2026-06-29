@@ -41,6 +41,12 @@
                     <option value="rolling">Rolling Window</option>
                     <option value="snapshot">Snapshot</option>
                 </select>
+                <select id="datasetSelect" class="form-select form-select-sm"
+                        style="width:auto;{% if mode != 'both' %} display:none;{% endif %}">
+                    <option value="both">Both TX+RX</option>
+                    <option value="tx">TX only</option>
+                    <option value="rx">RX only</option>
+                </select>
                 <label class="mb-0">
                     <input type="checkbox" id="pulseToggle"> Pulse
                 </label>

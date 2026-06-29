@@ -644,6 +644,7 @@
     var speedSlider = document.getElementById('speedSlider');
     var speedLabel = document.getElementById('speedLabel');
     var modeSelect = document.getElementById('modeSelect');
+    var datasetSelect = document.getElementById('datasetSelect');
     var pulseToggle = document.getElementById('pulseToggle');
     var windowRow = document.getElementById('windowRow');
     var windowSlider = document.getElementById('windowSlider');
@@ -652,6 +653,14 @@
     var timeStartEl = document.getElementById('timeStart');
     var timeCurrentEl = document.getElementById('timeCurrent');
     var timeEndEl = document.getElementById('timeEnd');
+
+    // TX/RX/Both page mode (from the Configuration page, not to be
+    // confused with the rolling/snapshot animation `mode` below). Outside
+    // Both mode there's only ever one dataset, so the #datasetSelect
+    // control — hidden in the DOM but still present with "both" as its
+    // first/default option — is never consulted; pageMode wins instead.
+    var pageMode = '{{ mode }}';
+    var DATASET_LABELS = { both: 'Both', tx: 'TX', rx: 'RX' };
 
     var txLat = parseFloat(controlsEl.dataset.txLat);
     var txLon = parseFloat(controlsEl.dataset.txLon);
@@ -807,9 +816,79 @@
       noSpotsControl = null;
     }
 
+    function refreshDatasetInfo(callback) {
+      var infoDataset = (pageMode === 'both') ? 'both' : pageMode;
+      fetch('/api/dataset-info?dataset=' + infoDataset)
+        .then(function(resp) { return resp.ok ? resp.json() : null; })
+        .then(function(info) {
+          if (info && !info.error) {
+            datasetStart = parseUTC(info.start);
+            datasetEnd = parseUTC(info.end);
+            durationHours = info.duration_hours || durationHours;
+            granularityMinutes = info.granularity_minutes || granularityMinutes;
+          }
+          callback();
+        })
+        .catch(function() { callback(); });
+    }
+
+    function drawMarker(spot, radius, filled) {
+      var colour = colourForDistance(spot.distance);
+      var marker = L.circleMarker([spot.rx_lat, spot.rx_lon], {
+        radius: radius,
+        color: colour,
+        fill: filled,
+        fillColor: colour,
+        fillOpacity: filled ? 0.8 : 0.2
+      });
+      var popupHtml = '<b>' + spot.rx_sign + '</b><br>' +
+        'Distance: ' + spot.distance + ' km<br>' +
+        'SNR: ' + spot.snr + ' dB<br>' +
+        'Time: ' + spot.time;
+      marker.bindPopup(popupHtml);
+      marker.addTo(animationLayerGroup);
+
+      L.polyline([[txLat, txLon], [spot.rx_lat, spot.rx_lon]], {
+        color: colour,
+        weight: 2,
+        opacity: 0.7
+      }).addTo(animationLayerGroup);
+
+      if (pulseEnabled && marker._path) {
+        marker._path.classList.add('pulse-marker');
+      }
+    }
+
+    function drawSymmetricMarker(spot) {
+      var marker = L.circleMarker([spot.rx_lat, spot.rx_lon], {
+        radius: 10,
+        color: '#FFD700',
+        fill: true,
+        fillColor: '#FFD700',
+        fillOpacity: 0.9
+      });
+      var popupHtml = '<b>' + spot.rx_sign + '</b><br>Two-way path confirmed<br>' +
+        'Distance: ' + spot.distance + ' km<br>' +
+        'Time: ' + spot.time;
+      marker.bindPopup(popupHtml);
+      marker.addTo(animationLayerGroup);
+
+      L.polyline([[txLat, txLon], [spot.rx_lat, spot.rx_lon]], {
+        color: '#FFD700',
+        weight: 3,
+        opacity: 0.9
+      }).addTo(animationLayerGroup);
+
+      if (pulseEnabled && marker._path) {
+        marker._path.classList.add('pulse-marker');
+      }
+    }
+
     function drawFrame(time) {
       if (!leafletMap || !animationLayerGroup) return;
       currentTime = time;
+
+      var dataset = (pageMode === 'both' && datasetSelect) ? datasetSelect.value : pageMode;
 
       var requestStart, windowParam, requestEnd;
       if (mode === 'snapshot') {
@@ -823,7 +902,7 @@
       }
 
       var url = '/api/spots?start=' + encodeURIComponent(requestStart.toISOString()) +
-        '&window=' + windowParam + '&mode=' + mode;
+        '&window=' + windowParam + '&mode=' + mode + '&dataset=' + dataset;
 
       fetch(url)
         .then(function(resp) {
@@ -842,7 +921,40 @@
             clearTimeout(noSpotsHideTimer);
             noSpotsHideTimer = null;
           }
-          if (!data.spots || data.spots.length === 0) {
+
+          var totalSpots = 0;
+          if (dataset === 'both') {
+            var txSpots = data.tx_spots || [];
+            var rxSpots = data.rx_spots || [];
+            totalSpots = txSpots.length + rxSpots.length;
+
+            var rxByCall = {};
+            rxSpots.forEach(function(spot) { rxByCall[spot.rx_sign] = spot; });
+            var symmetric = {};
+
+            txSpots.forEach(function(spot) {
+              if (rxByCall[spot.rx_sign]) {
+                symmetric[spot.rx_sign] = spot;
+              } else {
+                drawMarker(spot, 8, true);
+              }
+            });
+            rxSpots.forEach(function(spot) {
+              if (!symmetric[spot.rx_sign]) {
+                drawMarker(spot, 9, false);
+              }
+            });
+            Object.keys(symmetric).forEach(function(call) {
+              drawSymmetricMarker(symmetric[call]);
+            });
+          } else if (data.spots) {
+            totalSpots = data.spots.length;
+            data.spots.forEach(function(spot) {
+              drawMarker(spot, 8, true);
+            });
+          }
+
+          if (totalSpots === 0) {
             if (noSpots) {
               noSpots.show();
               noSpotsHideTimer = setTimeout(function() {
@@ -853,35 +965,6 @@
             noSpots.hide();
           }
 
-          if (data.spots) {
-            data.spots.forEach(function(spot) {
-              var colour = colourForDistance(spot.distance);
-              var marker = L.circleMarker([spot.rx_lat, spot.rx_lon], {
-                radius: 8,
-                color: colour,
-                fill: true,
-                fillColor: colour,
-                fillOpacity: 0.8
-              });
-              var popupHtml = '<b>' + spot.rx_sign + '</b><br>' +
-                'Distance: ' + spot.distance + ' km<br>' +
-                'SNR: ' + spot.snr + ' dB<br>' +
-                'Time: ' + spot.time;
-              marker.bindPopup(popupHtml);
-              marker.addTo(animationLayerGroup);
-
-              L.polyline([[txLat, txLon], [spot.rx_lat, spot.rx_lon]], {
-                color: colour,
-                weight: 2,
-                opacity: 0.7
-              }).addTo(animationLayerGroup);
-
-              if (pulseEnabled && marker._path) {
-                marker._path.classList.add('pulse-marker');
-              }
-            });
-          }
-
           var control = getOrCreateTimestampControl();
           if (control) {
             var label;
@@ -890,7 +973,8 @@
             } else {
               label = fmtDateTime(requestStart) + ' – ' + fmtDateTime(requestEnd);
             }
-            control.update(label);
+            var datasetLabel = DATASET_LABELS[dataset] || '';
+            control.update((datasetLabel ? datasetLabel + ' · ' : '') + label);
           }
 
           updateTimeLabels();
@@ -972,9 +1056,11 @@
 
     document.querySelectorAll('#map-tab').forEach(function(tab) {
       tab.addEventListener('shown.bs.tab', function() {
-        applyWindowGating();
-        initWindowSlider();
-        initTimeLabels();
+        refreshDatasetInfo(function() {
+          applyWindowGating();
+          initWindowSlider();
+          initTimeLabels();
+        });
       });
     });
 
@@ -1059,6 +1145,12 @@
       windowRow.style.display = (mode === 'snapshot') ? 'none' : '';
       drawFrame(currentTime);
     });
+
+    if (datasetSelect) {
+      datasetSelect.addEventListener('change', function() {
+        if (isAnimationMode) drawFrame(currentTime);
+      });
+    }
 
     pulseToggle.addEventListener('change', function() {
       pulseEnabled = pulseToggle.checked;
