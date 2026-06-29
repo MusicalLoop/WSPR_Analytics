@@ -12,42 +12,57 @@
 </div>
 {% endmacro %}
 
+{% macro render_table_rows(caption, headers, rows, time_format=None) %}
+<table class="table table-bordered table-striped table-sm mb-0">
+    <caption>{{ caption }}</caption>
+    <thead>
+        <tr>
+            {% for header in headers %}
+            <th {% if loop.index > 1 %}class="text-end"{% endif %}>{{ header }}</th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in rows %}
+        <tr>
+            {% for key, value in row.items() %}
+            {# 'unknown_country' is bookkeeping for the unknown-country
+            note below the tables, not a displayed column #}
+            {% if key != 'unknown_country' %}
+            {# Handle special formatting for 'distance' and 'time' if needed #}
+            {% if key == 'distance' %}
+            <td class="text-end">{{ "{:,.0f}".format(value) }}</td>
+            {% elif key == 'time' and time_format %}
+            <td>{{ value.strftime(time_format) }}</td>
+            {% else %}
+            <td {% if not loop.first %}class="text-end"{% endif %}>{{ value }}</td>
+            {% endif %}
+            {% endif %}
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endmacro %}
+
 {% macro render_table_card(title, caption, headers, rows, time_format=None) %}
 <div class="card h-100 shadow-sm">
     <div class="card-header">
         <h4 class="mb-0">{{ title }}</h4>
     </div>
     <div class="card-body">
-        <table class="table table-bordered table-striped table-sm mb-0">
-            <caption>{{ caption }}</caption>
-            <thead>
-                <tr>
-                    {% for header in headers %}
-                    <th {% if loop.index > 1 %}class="text-end"{% endif %}>{{ header }}</th>
-                    {% endfor %}
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in rows %}
-                <tr>
-                    {% for key, value in row.items() %}
-                    {# 'unknown_country' is bookkeeping for the unknown-country
-                    note below the tables, not a displayed column #}
-                    {% if key != 'unknown_country' %}
-                    {# Handle special formatting for 'distance' and 'time' if needed #}
-                    {% if key == 'distance' %}
-                    <td class="text-end">{{ "{:,.0f}".format(value) }}</td>
-                    {% elif key == 'time' and time_format %}
-                    <td>{{ value.strftime(time_format) }}</td>
-                    {% else %}
-                    <td {% if not loop.first %}class="text-end"{% endif %}>{{ value }}</td>
-                    {% endif %}
-                    {% endif %}
-                    {% endfor %}
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        {{ render_table_rows(caption, headers, rows, time_format) }}
     </div>
+</div>
+{% endmacro %}
+
+{% macro render_filter_buttons(table_id) %}
+<div class="btn-group btn-group-sm mb-2" id="{{ table_id }}-filter" role="group">
+    <button type="button" class="btn btn-outline-primary active" data-view="all"
+            onclick="filterTable('{{ table_id }}', 'all')">All</button>
+    <button type="button" class="btn btn-outline-primary" data-view="tx"
+            onclick="filterTable('{{ table_id }}', 'tx')">TX only</button>
+    <button type="button" class="btn btn-outline-primary" data-view="rx"
+            onclick="filterTable('{{ table_id }}', 'rx')">RX only</button>
 </div>
 {% endmacro %}

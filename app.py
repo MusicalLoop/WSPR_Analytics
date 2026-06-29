@@ -329,6 +329,136 @@ def build_analysis_tables(result, top_stations_count, country_by_call):
 
     return callSignList, distanceList, best_ears_list, reliable_paths_list
 
+def strip_unknown_marker(call_sign):
+    """The enriched callsign/distance table rows suffix '*' onto callsigns
+    with an unresolved country (see build_analysis_tables); combined rows
+    need the bare callsign to match a station across the TX and RX sides
+    and to compare against symmetric_calls (which holds bare callsigns)."""
+    return call_sign[:-1] if call_sign.endswith('*') else call_sign
+
+def combine_callsign_lists(tx_list, rx_list, symmetric_calls):
+    """
+    Both mode Analysis tab: merges the (already capped) TX and RX Top
+    Call Signs tables into one row per unique station, with per-side spot
+    counts. Sorted by total spots descending.
+    """
+    symmetric_set = set(symmetric_calls)
+    merged = {}
+    for row in tx_list:
+        base_call = strip_unknown_marker(row['rx_sign'])
+        entry = merged.setdefault(base_call, {'call_sign': row['rx_sign'], 'grid': row.get('gridRef', ''), 'distance': row.get('distance', 0), 'tx_spots': 0, 'rx_spots': 0})
+        entry['tx_spots'] = row['Count']
+    for row in rx_list:
+        base_call = strip_unknown_marker(row['rx_sign'])
+        entry = merged.setdefault(base_call, {'call_sign': row['rx_sign'], 'grid': row.get('gridRef', ''), 'distance': row.get('distance', 0), 'tx_spots': 0, 'rx_spots': 0})
+        entry['rx_spots'] = row['Count']
+        if not entry['grid']:
+            entry['grid'] = row.get('gridRef', '')
+        if not entry['distance']:
+            entry['distance'] = row.get('distance', 0)
+
+    result = [
+        {
+            'call_sign': entry['call_sign'],
+            'grid': entry['grid'],
+            'distance': entry['distance'],
+            'tx_spots': entry['tx_spots'],
+            'rx_spots': entry['rx_spots'],
+            'total': entry['tx_spots'] + entry['rx_spots'],
+            'is_symmetric': base_call in symmetric_set,
+        }
+        for base_call, entry in merged.items()
+    ]
+    result.sort(key=lambda r: r['total'], reverse=True)
+    return result
+
+def combine_distance_lists(tx_list, rx_list, symmetric_calls):
+    """
+    Both mode Analysis tab: merges the (already capped) TX and RX Furthest
+    Stations tables into one row per unique station, with each side's best
+    SNR. Sorted by distance descending.
+    """
+    symmetric_set = set(symmetric_calls)
+    merged = {}
+    for row in tx_list:
+        base_call = strip_unknown_marker(row['rx_sign'])
+        entry = merged.setdefault(base_call, {'call_sign': row['rx_sign'], 'grid': row.get('rx_loc', ''), 'distance': row.get('distance', 0), 'tx_best_snr': '—', 'rx_best_snr': '—'})
+        snr = row.get('best_snr')
+        entry['tx_best_snr'] = '—' if not snr or snr == 'N/A' else snr
+    for row in rx_list:
+        base_call = strip_unknown_marker(row['rx_sign'])
+        entry = merged.setdefault(base_call, {'call_sign': row['rx_sign'], 'grid': row.get('rx_loc', ''), 'distance': row.get('distance', 0), 'tx_best_snr': '—', 'rx_best_snr': '—'})
+        snr = row.get('best_snr')
+        entry['rx_best_snr'] = '—' if not snr or snr == 'N/A' else snr
+        if not entry['grid']:
+            entry['grid'] = row.get('rx_loc', '')
+        if not entry['distance']:
+            entry['distance'] = row.get('distance', 0)
+
+    result = [
+        {
+            'call_sign': entry['call_sign'],
+            'grid': entry['grid'],
+            'distance': entry['distance'],
+            'tx_best_snr': entry['tx_best_snr'],
+            'rx_best_snr': entry['rx_best_snr'],
+            'is_symmetric': base_call in symmetric_set,
+        }
+        for base_call, entry in merged.items()
+    ]
+    result.sort(key=lambda r: r['distance'], reverse=True)
+    return result
+
+def combine_country_lists(tx_list, rx_list):
+    """Both mode Analysis tab: merges the TX and RX Countries tables into
+    one row per unique country, with per-side spot counts. Sorted by
+    total spots descending."""
+    merged = {}
+    for row in tx_list:
+        merged.setdefault(row['Country'], {'tx_spots': 0, 'rx_spots': 0})
+        merged[row['Country']]['tx_spots'] = row['Spots']
+    for row in rx_list:
+        merged.setdefault(row['Country'], {'tx_spots': 0, 'rx_spots': 0})
+        merged[row['Country']]['rx_spots'] = row['Spots']
+
+    result = [
+        {
+            'country': country,
+            'tx_spots': v['tx_spots'],
+            'rx_spots': v['rx_spots'],
+            'total': v['tx_spots'] + v['rx_spots'],
+        }
+        for country, v in merged.items()
+    ]
+    result.sort(key=lambda r: r['total'], reverse=True)
+    return result
+
+def combine_hourly_lists(tx_list, rx_list):
+    """Both mode Analysis tab: merges the TX and RX Hourly Distance tables
+    into one row per unique hour. Sorted chronologically — the Time column
+    isn't sortable client-side since it's the table's natural order."""
+    merged = {}
+    for row in tx_list:
+        entry = merged.setdefault(row['Time'], {'tx_mean': None, 'tx_spots': None, 'rx_mean': None, 'rx_spots': None})
+        entry['tx_mean'] = row['Mean']
+        entry['tx_spots'] = row['Spots']
+    for row in rx_list:
+        entry = merged.setdefault(row['Time'], {'tx_mean': None, 'tx_spots': None, 'rx_mean': None, 'rx_spots': None})
+        entry['rx_mean'] = row['Mean']
+        entry['rx_spots'] = row['Spots']
+
+    result = []
+    for time_key in sorted(merged.keys()):
+        v = merged[time_key]
+        result.append({
+            'time': time_key.strftime('%H:%M'),
+            'tx_mean': f"{v['tx_mean']:.2f}" if v['tx_mean'] is not None else '—',
+            'tx_spots': v['tx_spots'] if v['tx_spots'] is not None else '—',
+            'rx_mean': f"{v['rx_mean']:.2f}" if v['rx_mean'] is not None else '—',
+            'rx_spots': v['rx_spots'] if v['rx_spots'] is not None else '—',
+        })
+    return result
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -659,6 +789,23 @@ def dashboard():
         rx_result, top_stations_count, rx_result['country_by_call'] if rx_result else {}
     )
     rx_hourlyList = rx_result['hourlyList'] if rx_result else []
+
+    tx_countryList = tx_result['countryList'] if tx_result else []
+    rx_countryList = rx_result['countryList'] if rx_result else []
+
+    # Both mode: side-by-side combined tables for the Analysis tab's [All]
+    # filter view — one row per unique station/country/hour across both
+    # datasets. Best Ears and Most Reliable Paths keep the TX/RX toggle
+    # only; a combined view for those is deferred (see docs/ROADMAP.md).
+    combined_callsign_list = []
+    combined_distance_list = []
+    combined_country_list = []
+    combined_hourly_list = []
+    if mode == 'both':
+        combined_callsign_list = combine_callsign_lists(tx_callSignList, rx_callSignList, symmetric_calls)
+        combined_distance_list = combine_distance_lists(tx_distanceList, rx_distanceList, symmetric_calls)
+        combined_country_list = combine_country_lists(tx_countryList, rx_countryList)
+        combined_hourly_list = combine_hourly_lists(tx_hourlyList, rx_hourlyList)
 
     if raw_data is not None:
         try:
@@ -1007,8 +1154,8 @@ def dashboard():
         rx_summaryData=rx_result['summaryData'] if rx_result else None,
         tx_distanceList=tx_distanceList,
         rx_distanceList=rx_distanceList,
-        tx_countryList=tx_result['countryList'] if tx_result else [],
-        rx_countryList=rx_result['countryList'] if rx_result else [],
+        tx_countryList=tx_countryList,
+        rx_countryList=rx_countryList,
         tx_best_snr_value=best_snr_value if mode == 'both' else None,
         rx_best_snr_value=rx_result['best_snr_value'] if rx_result else None,
         tx_best_snr_call=best_snr_call if mode == 'both' else None,
@@ -1039,7 +1186,11 @@ def dashboard():
         tx_best_ears_list=tx_best_ears_list,
         rx_best_ears_list=rx_best_ears_list,
         tx_reliable_paths_list=tx_reliable_paths_list,
-        rx_reliable_paths_list=rx_reliable_paths_list
+        rx_reliable_paths_list=rx_reliable_paths_list,
+        combined_callsign_list=combined_callsign_list,
+        combined_distance_list=combined_distance_list,
+        combined_country_list=combined_country_list,
+        combined_hourly_list=combined_hourly_list
     )
 
 RAW_DATA_CSV_PATH = 'data/WSPR_Analytics.csv'
