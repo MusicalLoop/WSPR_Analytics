@@ -55,6 +55,45 @@ def azimuth_sector(az):
             return name
     return 'N'
 
+def adaptive_ring_distances(max_distance_km):
+    """
+    Distance ring radii (km), scaled to the dataset's furthest spot so the
+    rings stay meaningful whether the data is all local contacts or spans
+    intercontinental DX — fixed 500/1000/1500km rings are useless once a
+    spot is heard 16,000km away.
+    """
+    if max_distance_km < 2000:
+        return [500, 1000, 1500]
+    elif max_distance_km < 5000:
+        return [1000, 2500, 4000]
+    elif max_distance_km < 10000:
+        return [2000, 5000, 8000]
+    else:
+        return [3000, 7000, 12000, 16000]
+
+def draw_distance_rings(folium_map, tx_lat, tx_lon, max_distance_km):
+    """Draws dashed distance rings (adaptive_ring_distances) centred on the
+    TX QTH, each labelled with its distance due north of the QTH."""
+    for ring_radius_km in adaptive_ring_distances(max_distance_km):
+        folium.Circle(
+            location=[tx_lat, tx_lon],
+            radius=ring_radius_km * 1000,
+            color='grey',
+            fill=False,
+            dashArray='5, 5'
+        ).add_to(folium_map)
+
+        label_lat = tx_lat + (ring_radius_km / 111.0)
+        label_lon = tx_lon
+        folium.Marker(
+            location=[label_lat, label_lon],
+            icon=folium.DivIcon(html=(
+                '<div style="font-size:10px; color:#888; white-space:nowrap; '
+                'transform:translate(-50%,-100%);">'
+                f'{ring_radius_km:,} km</div>'
+            ))
+        ).add_to(folium_map)
+
 RX_NORMALIZE_COLUMNS = {
     'tx_sign': 'rx_sign', 'rx_sign': 'tx_sign',
     'tx_lat': 'rx_lat', 'rx_lat': 'tx_lat',
@@ -955,14 +994,11 @@ def dashboard():
                         ).add_to(distance_group)
 
                 # Distance rings stay outside any FeatureGroup so they're always visible.
-                for ring_radius_km in (500, 1000, 1500):
-                    folium.Circle(
-                        location=[tx_lat, tx_lon],
-                        radius=ring_radius_km * 1000,
-                        color='grey',
-                        fill=False,
-                        dashArray='5, 5'
-                    ).add_to(folium_map)
+                both_max_distances = [
+                    df['distance'].max() for df in (tx_raw_data, rx_raw_data)
+                    if df is not None and not df.empty
+                ]
+                draw_distance_rings(folium_map, tx_lat, tx_lon, max(both_max_distances, default=0))
 
                 GroupedLayerControl(
                     groups={
@@ -1040,14 +1076,8 @@ def dashboard():
                     ).add_to(country_group)
 
                 # Distance rings stay outside any FeatureGroup so they're always visible.
-                for ring_radius_km in (500, 1000, 1500):
-                    folium.Circle(
-                        location=[tx_lat, tx_lon],
-                        radius=ring_radius_km * 1000,
-                        color='grey',
-                        fill=False,
-                        dashArray='5, 5'
-                    ).add_to(folium_map)
+                single_max_distance = raw_data['distance'].max() if not raw_data.empty else 0
+                draw_distance_rings(folium_map, tx_lat, tx_lon, single_max_distance)
 
                 GroupedLayerControl(
                     groups={
