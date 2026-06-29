@@ -34,6 +34,12 @@
 | Callsign suffix stripping | Improved country resolution for /KE, /RE, -R suffixes | 8447c52 |
 | Unknown callsign flagging | Asterisk marker and note in Analysis tables | 8447c52 |
 | Share card PNG export | Downloadable beacon report image for Discord sharing (Pillow) | 38bb988 |
+| TX/RX dual mode Phase 1-3 | Config selector, dual getData(), label adaptation | aa25de7 |
+| TX/RX dual mode Phase 4 | Both mode Summary, normalize_rx fix, cooldown | 8c1b419 |
+| TX/RX dual mode Phase 5 | Both mode map layers, adaptive rings | 8c43768 + c057158 |
+| TX/RX dual mode Phase 6 | Both mode charts dual datasets | 2c31ca0 |
+| TX/RX dual mode Phase 7 | Both mode Analysis combined tables, sortable | add4656 + 884d890 |
+| TX/RX dual mode Phase 8 | Both mode animation TX/RX/Both dataset selector | 924fbef |
 
 ### Dashboard redesign scope
 
@@ -108,10 +114,11 @@ for full detail on each item.
 | SNR over time | Line chart showing band opening/closing | Medium |
 | Drift analysis | Flag receivers with clock problems | Low |
 | Single page flow | Simplified UX for non-technical OARC users | Low |
-| TX/RX dual mode | Full TX and RX analysis with combined view — see docs/TXRX_DESIGN.md | High |
 | Lazy-load Folium map | Build map only when Map tab first opened | Medium |
 | Cache CSV between animation frames | Avoid re-parsing on every frame | Medium |
 | QRZ.com integration | Receiver details in map popups and tables | High |
+| Share card RX/Both adaptation | Update PNG export for RX and Both modes | Medium |
+| Best Ears / Most Reliable combined view | True combined analysis for Both mode | Medium |
 
 ---
 

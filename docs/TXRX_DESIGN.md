@@ -1,7 +1,8 @@
 # WSPR Analytics — TX/RX Dual Mode Design
 
 ## Status
-Designed, not yet built.
+Built and deployed on feature/txrx. 
+Merged to main: pending.
 
 ## Overview
 Extends WSPR Analytics to support receive (RX) analysis 
@@ -10,6 +11,45 @@ three modes: TX only (current behaviour), RX only, and
 Both (TX + RX combined). The Both mode is the primary 
 new capability — it reveals propagation asymmetry that 
 neither TX nor RX data alone can show.
+
+## What Was Built
+
+### Phases completed
+- Phase 1: Configuration mode selector (TX/RX/Both)
+- Phase 2: getData() dual-mode, WSPR_TX.csv/WSPR_RX.csv
+- Phase 3: TX/RX label adaptation throughout dashboard
+- Phase 4: Both mode Summary three-column layout,
+  normalize_rx_dataframe fix, wspr.live cooldown
+- Phase 5: Both mode map with TX/RX/Symmetric layers,
+  adaptive distance rings
+- Phase 6: Both mode charts with dual TX/RX datasets
+- Phase 7: Both mode Analysis combined tables with
+  side-by-side columns, sortable headers, TX/RX filters
+- Phase 8: Both mode animation with TX/RX/Both 
+  dataset selector
+
+### Key implementation decisions
+- normalize_rx_dataframe() swaps tx_sign/rx_sign 
+  columns so all existing analysis code works 
+  correctly for RX data without modification
+- wspr.live 5.5s cooldown between TX and RX queries
+  in Both mode to avoid rate limiting
+- Symmetric paths computed by inner join on callsign
+  across TX rx_sign and RX tx_sign lists
+- /api/spots dataset parameter: tx/rx/both
+  backward compatible (default tx)
+- Combined Analysis tables use Option A side-by-side
+  columns with sortable headers and TX/RX filters
+
+### Known limitations
+- Best Ears and Most Reliable Paths in Both mode
+  show TX/RX toggle only — no combined view
+  (true combined analysis deferred, see ROADMAP)
+- Share card export not yet adapted for RX/Both mode
+  (generates TX-style card regardless of mode)
+- Both* button in Analysis tab shows TX data
+  (placeholder, true combined view is a planned 
+  enhancement)
 
 ## Background
 The tool was originally designed for a single-band TX 
