@@ -43,6 +43,8 @@
 
 <script>
 (function () {
+    var isBoth = {{ 'true' if mode == 'both' else 'false' }};
+
     var freqChartData = {{ freq_chart_data | safe }};
     var snrScatterData = {{ snr_scatter_data | safe }};
     var hourlyChartData = {{ hourly_chart_data | safe }};
@@ -50,8 +52,71 @@
     var azimuthChartData = {{ azimuth_chart_data | safe }};
     var propagationChartData = {{ propagation_chart_data | safe }};
 
+    {% if mode == 'both' %}
+    var txFreqChartData = {{ tx_freq_chart_data | safe }};
+    var rxFreqChartData = {{ rx_freq_chart_data | safe }};
+    var txSnrScatterData = {{ tx_snr_scatter_data | safe }};
+    var rxSnrScatterData = {{ rx_snr_scatter_data | safe }};
+    var txHourlyChartData = {{ tx_hourly_chart_data | safe }};
+    var rxHourlyChartData = {{ rx_hourly_chart_data | safe }};
+    var txCountryChartData = {{ tx_country_chart_data | safe }};
+    var rxCountryChartData = {{ rx_country_chart_data | safe }};
+    var txAzimuthChartData = {{ tx_azimuth_chart_data | safe }};
+    var rxAzimuthChartData = {{ rx_azimuth_chart_data | safe }};
+    var txPropagationChartData = {{ tx_propagation_chart_data | safe }};
+    var rxPropagationChartData = {{ rx_propagation_chart_data | safe }};
+    {% endif %}
+
+    // Merges two label sets (preserving TX order, then any RX-only labels
+    // appended) and re-aligns each side's values onto the merged axis, so
+    // bar/line series with mismatched categories (e.g. TX and RX produce
+    // different distance bins, or one side has gaps the other doesn't)
+    // still plot against the correct labels rather than by array position.
+    function mergeLabelledSeries(txLabels, txValues, rxLabels, rxValues, fillValue) {
+        var labels = txLabels.slice();
+        rxLabels.forEach(function (l) {
+            if (labels.indexOf(l) === -1) labels.push(l);
+        });
+        function align(srcLabels, srcValues) {
+            var index = {};
+            srcLabels.forEach(function (l, i) { index[l] = i; });
+            return labels.map(function (l) {
+                return (l in index) ? srcValues[index[l]] : fillValue;
+            });
+        }
+        return {
+            labels: labels,
+            txValues: align(txLabels, txValues),
+            rxValues: align(rxLabels, rxValues)
+        };
+    }
+
     var charts = [];
 
+    {% if mode == 'both' %}
+    var freqMerged = mergeLabelledSeries(
+        txFreqChartData.labels, txFreqChartData.values,
+        rxFreqChartData.labels, rxFreqChartData.values, 0
+    );
+    charts.push(new Chart(document.getElementById('chartFrequency'), {
+        type: 'bar',
+        data: {
+            labels: freqMerged.labels,
+            datasets: [
+                { label: 'TX', data: freqMerged.txValues, backgroundColor: 'rgba(54, 162, 235, 0.7)' },
+                { label: 'RX', data: freqMerged.rxValues, backgroundColor: 'rgba(23, 162, 184, 0.7)' }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: { title: { display: true, text: 'Spot Count by Distance Band' } },
+            scales: {
+                x: { title: { display: true, text: 'Distance Range' } },
+                y: { title: { display: true, text: 'Number of Spots' }, beginAtZero: true }
+            }
+        }
+    }));
+    {% else %}
     charts.push(new Chart(document.getElementById('chartFrequency'), {
         type: 'bar',
         data: {
@@ -71,7 +136,50 @@
             }
         }
     }));
+    {% endif %}
 
+    {% if mode == 'both' %}
+    charts.push(new Chart(document.getElementById('chartSnr'), {
+        type: 'scatter',
+        data: {
+            datasets: [
+                {
+                    label: 'TX',
+                    data: txSnrScatterData,
+                    backgroundColor: 'rgba(255, 159, 64, 0.7)'
+                },
+                {
+                    label: 'RX',
+                    data: rxSnrScatterData,
+                    backgroundColor: 'rgba(153, 102, 255, 0.7)'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: { display: true, text: 'SNR vs Distance' },
+                tooltip: {
+                    callbacks: {
+                        label: function (context) {
+                            const d = context.raw;
+                            return [
+                                context.dataset.label + ': ' + d.call + ' · ' + d.grid,
+                                'Distance: ' + d.x + ' km',
+                                'SNR: ' + d.y + ' dB',
+                                'Time: ' + d.time
+                            ];
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { title: { display: true, text: 'Distance (km)' } },
+                y: { title: { display: true, text: 'SNR (dB)' } }
+            }
+        }
+    }));
+    {% else %}
     charts.push(new Chart(document.getElementById('chartSnr'), {
         type: 'scatter',
         data: {
@@ -105,7 +213,32 @@
             }
         }
     }));
+    {% endif %}
 
+    {% if mode == 'both' %}
+    var hourlyMerged = mergeLabelledSeries(
+        txHourlyChartData.labels, txHourlyChartData.values,
+        rxHourlyChartData.labels, rxHourlyChartData.values, 0
+    );
+    charts.push(new Chart(document.getElementById('chartHourly'), {
+        type: 'bar',
+        data: {
+            labels: hourlyMerged.labels,
+            datasets: [
+                { label: 'TX', data: hourlyMerged.txValues, backgroundColor: 'rgba(54, 162, 235, 0.7)' },
+                { label: 'RX', data: hourlyMerged.rxValues, backgroundColor: 'rgba(23, 162, 184, 0.7)' }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: { title: { display: true, text: 'Spots over Time' } },
+            scales: {
+                x: { title: { display: true, text: 'Time' } },
+                y: { title: { display: true, text: 'Number of Spots' }, beginAtZero: true }
+            }
+        }
+    }));
+    {% else %}
     charts.push(new Chart(document.getElementById('chartHourly'), {
         type: 'bar',
         data: {
@@ -125,7 +258,33 @@
             }
         }
     }));
+    {% endif %}
 
+    {% if mode == 'both' %}
+    var countryMerged = mergeLabelledSeries(
+        txCountryChartData.labels, txCountryChartData.values,
+        rxCountryChartData.labels, rxCountryChartData.values, 0
+    );
+    charts.push(new Chart(document.getElementById('chartCountries'), {
+        type: 'bar',
+        data: {
+            labels: countryMerged.labels,
+            datasets: [
+                { label: 'TX', data: countryMerged.txValues, backgroundColor: 'rgba(54, 162, 235, 0.7)' },
+                { label: 'RX', data: countryMerged.rxValues, backgroundColor: 'rgba(23, 162, 184, 0.7)' }
+            ]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            plugins: { title: { display: true, text: 'Countries Heard' } },
+            scales: {
+                x: { title: { display: true, text: 'Number of Spots' }, beginAtZero: true },
+                y: { title: { display: true, text: 'Country' } }
+            }
+        }
+    }));
+    {% else %}
     charts.push(new Chart(document.getElementById('chartCountries'), {
         type: 'bar',
         data: {
@@ -146,7 +305,56 @@
             }
         }
     }));
+    {% endif %}
 
+    {% if mode == 'both' %}
+    var azimuthMaxBoth = Math.max(
+        txAzimuthChartData.values.length ? Math.max.apply(null, txAzimuthChartData.values) : 0,
+        rxAzimuthChartData.values.length ? Math.max.apply(null, rxAzimuthChartData.values) : 0
+    );
+    charts.push(new Chart(document.getElementById('chartAzimuth'), {
+        type: 'radar',
+        data: {
+            labels: txAzimuthChartData.labels,
+            datasets: [
+                {
+                    label: 'TX',
+                    data: txAzimuthChartData.values,
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    pointBackgroundColor: 'rgba(54, 162, 235, 1)'
+                },
+                {
+                    label: 'RX',
+                    data: rxAzimuthChartData.values,
+                    backgroundColor: 'rgba(23, 162, 184, 0.2)',
+                    borderColor: 'rgba(23, 162, 184, 1)',
+                    pointBackgroundColor: 'rgba(23, 162, 184, 1)'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: { display: true, text: 'Propagation Direction' },
+                legend: { display: true },
+                tooltip: {
+                    callbacks: {
+                        label: function (context) {
+                            return context.dataset.label + ' ' + context.label + ': ' + context.raw + ' spots';
+                        }
+                    }
+                }
+            },
+            scales: {
+                r: {
+                    beginAtZero: true,
+                    ticks: { stepSize: Math.max(1, Math.ceil(azimuthMaxBoth / 5)) }
+                }
+            }
+        }
+    }));
+    {% else %}
     var azimuthMax = azimuthChartData.values.length ? Math.max.apply(null, azimuthChartData.values) : 0;
     charts.push(new Chart(document.getElementById('chartAzimuth'), {
         type: 'radar',
@@ -181,7 +389,80 @@
             }
         }
     }));
+    {% endif %}
 
+    {% if mode == 'both' %}
+    var propSpotsMerged = mergeLabelledSeries(
+        txPropagationChartData.labels, txPropagationChartData.spots,
+        rxPropagationChartData.labels, rxPropagationChartData.spots, 0
+    );
+    var propSnrMerged = mergeLabelledSeries(
+        txPropagationChartData.labels, txPropagationChartData.snr,
+        rxPropagationChartData.labels, rxPropagationChartData.snr, null
+    );
+    charts.push(new Chart(document.getElementById('chartPropagation'), {
+        data: {
+            labels: propSpotsMerged.labels,
+            datasets: [
+                {
+                    type: 'bar',
+                    label: 'TX Spots',
+                    data: propSpotsMerged.txValues,
+                    backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                    yAxisID: 'ySpots'
+                },
+                {
+                    type: 'bar',
+                    label: 'RX Spots',
+                    data: propSpotsMerged.rxValues,
+                    backgroundColor: 'rgba(23, 162, 184, 0.7)',
+                    yAxisID: 'ySpots'
+                },
+                {
+                    type: 'line',
+                    label: 'TX Mean SNR (dB)',
+                    data: propSnrMerged.txValues,
+                    borderColor: 'rgba(255, 159, 64, 1)',
+                    backgroundColor: 'rgba(255, 159, 64, 0.2)',
+                    yAxisID: 'ySnr',
+                    tension: 0.3
+                },
+                {
+                    type: 'line',
+                    label: 'RX Mean SNR (dB)',
+                    data: propSnrMerged.rxValues,
+                    borderColor: 'rgba(153, 102, 255, 1)',
+                    backgroundColor: 'rgba(153, 102, 255, 0.2)',
+                    yAxisID: 'ySnr',
+                    tension: 0.3
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                title: { display: true, text: 'Propagation over Time' },
+                legend: { display: true }
+            },
+            scales: {
+                x: { title: { display: true, text: 'Time' } },
+                ySpots: {
+                    type: 'linear',
+                    position: 'left',
+                    beginAtZero: true,
+                    title: { display: true, text: 'Spots' }
+                },
+                ySnr: {
+                    type: 'linear',
+                    position: 'right',
+                    title: { display: true, text: 'SNR (dB)' },
+                    grid: { drawOnChartArea: false }
+                }
+            }
+        }
+    }));
+    {% else %}
     charts.push(new Chart(document.getElementById('chartPropagation'), {
         data: {
             labels: propagationChartData.labels,
@@ -228,6 +509,7 @@
             }
         }
     }));
+    {% endif %}
 
     var chartsTab = document.getElementById('charts-tab');
     if (chartsTab) {

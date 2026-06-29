@@ -140,6 +140,95 @@ def total_spots_of(summary_list):
     item = next((r for r in summary_list if r['label'] == 'Total spots'), None)
     return item['value'] if item else 0
 
+EMPTY_CHART_SERIES = dict(
+    freq_chart_data=json.dumps({'labels': [], 'values': []}),
+    hourly_chart_data=json.dumps({'labels': [], 'values': []}),
+    country_chart_data=json.dumps({'labels': [], 'values': []}),
+    snr_scatter_data=json.dumps([]),
+    azimuth_chart_data=json.dumps({'labels': AZIMUTH_SECTOR_ORDER, 'values': [0] * len(AZIMUTH_SECTOR_ORDER)}),
+    propagation_chart_data=json.dumps({'labels': [], 'spots': [], 'snr': []}),
+)
+
+def build_chart_series(result):
+    """
+    Builds the same six Chart.js-ready JSON series (frequency/hourly/
+    country/SNR-scatter/azimuth/propagation) that the dashboard route
+    computes for the primary dataset, but for an arbitrary fetch_and_analyse()
+    result dict. Used to build the RX-side (and, for Both mode, TX-side
+    alias) chart series for the Charts tab's dual-dataset view.
+    """
+    if not result:
+        return dict(EMPTY_CHART_SERIES)
+
+    raw_data = result['raw_data']
+    frequencyList = result['frequencyList']
+    hourlyList = result['hourlyList']
+    countryList = result['countryList']
+
+    series = dict(EMPTY_CHART_SERIES)
+
+    series['freq_chart_data'] = json.dumps({
+        'labels': [row['Distance Range'] for row in frequencyList],
+        'values': [row['Number of Spots'] for row in frequencyList]
+    })
+
+    series['hourly_chart_data'] = json.dumps({
+        'labels': [row['Time'].strftime('%H:%M') for row in hourlyList],
+        'values': [row['Spots'] for row in hourlyList]
+    })
+
+    top_countries = countryList[:10]
+    series['country_chart_data'] = json.dumps({
+        'labels': [row['Country'] for row in top_countries],
+        'values': [row['Spots'] for row in top_countries]
+    })
+
+    if raw_data is None:
+        return series
+
+    try:
+        time_fmt = pd.to_datetime(raw_data['time']).dt.strftime('%H:%M')
+        series['snr_scatter_data'] = json.dumps([
+            {'x': float(d), 'y': float(s), 'call': c, 'grid': g, 'time': t}
+            for d, s, c, g, t in zip(
+                raw_data['distance'], raw_data['snr'],
+                raw_data['rx_sign'], raw_data['rx_loc'], time_fmt
+            )
+        ])
+    except Exception as e:
+        logger.warning(f"Failed to compute SNR scatter data: {e}")
+
+    if 'azimuth' in raw_data.columns:
+        try:
+            sector_counts = raw_data['azimuth'].apply(azimuth_sector).value_counts()
+            series['azimuth_chart_data'] = json.dumps({
+                'labels': AZIMUTH_SECTOR_ORDER,
+                'values': [int(sector_counts.get(s, 0)) for s in AZIMUTH_SECTOR_ORDER]
+            })
+        except Exception as e:
+            logger.warning(f"Failed to compute azimuth chart data: {e}")
+
+    propagation_labels = [row['Time'].strftime('%H:%M') for row in hourlyList]
+    propagation_spots = [row['Spots'] for row in hourlyList]
+    propagation_snr = [None] * len(hourlyList)
+    try:
+        raw_time = pd.to_datetime(raw_data['time'])
+        hourly_snr = raw_data.groupby(raw_time.dt.floor('h'))['snr'].mean()
+        propagation_snr = [
+            round(float(hourly_snr[row['Time']]), 1) if row['Time'] in hourly_snr.index else None
+            for row in hourlyList
+        ]
+    except Exception as e:
+        logger.warning(f"Failed to compute hourly mean SNR: {e}")
+
+    series['propagation_chart_data'] = json.dumps({
+        'labels': propagation_labels,
+        'spots': propagation_spots,
+        'snr': propagation_snr
+    })
+
+    return series
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -750,6 +839,24 @@ def dashboard():
         'snr': propagation_snr
     })
 
+    # Both mode: alias the primary (TX) chart series under tx_* names and
+    # build the matching RX-side series, so the Charts tab can render dual
+    # TX/RX datasets. In single TX/RX mode these are unused by the template.
+    tx_freq_chart_data = freq_chart_data
+    tx_hourly_chart_data = hourly_chart_data
+    tx_country_chart_data = country_chart_data
+    tx_snr_scatter_data = snr_scatter_data
+    tx_azimuth_chart_data = azimuth_chart_data
+    tx_propagation_chart_data = propagation_chart_data
+
+    rx_chart_series = build_chart_series(rx_result if mode == 'both' else None)
+    rx_freq_chart_data = rx_chart_series['freq_chart_data']
+    rx_hourly_chart_data = rx_chart_series['hourly_chart_data']
+    rx_country_chart_data = rx_chart_series['country_chart_data']
+    rx_snr_scatter_data = rx_chart_series['snr_scatter_data']
+    rx_azimuth_chart_data = rx_chart_series['azimuth_chart_data']
+    rx_propagation_chart_data = rx_chart_series['propagation_chart_data']
+
     return render_template(
         'dashboard.html',
         summaryData=summaryData,
@@ -799,7 +906,19 @@ def dashboard():
         symmetric_calls=symmetric_calls,
         combined_spots=combined_spots,
         combined_unique=combined_unique,
-        combined_countries=combined_countries
+        combined_countries=combined_countries,
+        tx_freq_chart_data=tx_freq_chart_data,
+        rx_freq_chart_data=rx_freq_chart_data,
+        tx_hourly_chart_data=tx_hourly_chart_data,
+        rx_hourly_chart_data=rx_hourly_chart_data,
+        tx_country_chart_data=tx_country_chart_data,
+        rx_country_chart_data=rx_country_chart_data,
+        tx_snr_scatter_data=tx_snr_scatter_data,
+        rx_snr_scatter_data=rx_snr_scatter_data,
+        tx_azimuth_chart_data=tx_azimuth_chart_data,
+        rx_azimuth_chart_data=rx_azimuth_chart_data,
+        tx_propagation_chart_data=tx_propagation_chart_data,
+        rx_propagation_chart_data=rx_propagation_chart_data
     )
 
 RAW_DATA_CSV_PATH = 'data/WSPR_Analytics.csv'
