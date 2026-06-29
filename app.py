@@ -1560,11 +1560,71 @@ def draw_centred_text(draw, y, text, font, fill, width=600):
     x = (width - text_width) / 2
     draw.text((x, y), text, font=font, fill=fill)
 
+def draw_centred_text_in(draw, x_start, x_end, y, text, font, fill):
+    """Like draw_centred_text, but centred within an arbitrary column
+    (x_start..x_end) instead of the full card width — used for the Both
+    mode card's two-column sections."""
+    text_width = draw.textlength(text, font=font)
+    x = x_start + (x_end - x_start - text_width) / 2
+    draw.text((x, y), text, font=font, fill=fill)
+
+def fit_joined_text(draw, items, font, max_width, sep=' · '):
+    """Joins items with sep, dropping trailing items until the result fits
+    max_width — used for the Both mode card's narrower per-column country
+    lists, which can otherwise overflow their 400px column or the card
+    edge when several countries (or long names like "Fed. Rep. of
+    Germany") are joined into one line."""
+    if not items:
+        return 'N/A'
+    line = sep.join(items)
+    while draw.textlength(line, font=font) > max_width and len(items) > 1:
+        items = items[:-1]
+        line = sep.join(items)
+    return line
+
 def draw_mixed_line(draw, x, y, segments):
     for text, font, fill in segments:
         draw.text((x, y), text, font=font, fill=fill)
         x += draw.textlength(text, font=font)
     return x
+
+def compute_share_card_metrics(df):
+    """
+    Share-card summary metrics for a single TX or RX dataset: total spots,
+    unique stations, best DX, best SNR, and countries heard (excluding
+    Unknown). df must already be normalized so 'rx_sign' holds the remote
+    station — the shape read_dataset_for_api() produces for both TX and RX.
+    Recomputes countries fresh from df rather than relying on the on-disk
+    WSPR_Countries.csv, which only ever reflects whichever dataset the
+    dashboard route last ran analyseData() on (TX in Both mode).
+    """
+    if df is None or df.empty:
+        return {
+            'total_spots': 0, 'unique_stations': 0,
+            'best_dx_call': 'N/A', 'best_dx_km': 0,
+            'best_snr_call': 'N/A', 'best_snr_value': 0, 'best_snr_distance': 0,
+            'top_countries': [], 'all_countries': set(),
+        }
+
+    best_snr_row = df.loc[df['snr'].idxmax()]
+    best_dx_row = df.loc[df['distance'].idxmax()]
+
+    _, country_map = WSPR_Analytics.getCountries(df.copy())
+    country_counts = df['rx_sign'].map(country_map).fillna('Unknown').value_counts()
+    country_counts = country_counts[country_counts.index != 'Unknown']
+    all_countries = list(country_counts.index)
+
+    return {
+        'total_spots': int(len(df)),
+        'unique_stations': int(df['rx_sign'].nunique()),
+        'best_dx_call': best_dx_row['rx_sign'],
+        'best_dx_km': int(best_dx_row['distance']),
+        'best_snr_call': best_snr_row['rx_sign'],
+        'best_snr_value': int(best_snr_row['snr']),
+        'best_snr_distance': int(best_snr_row['distance']),
+        'top_countries': all_countries[:5],
+        'all_countries': set(all_countries),
+    }
 
 @app.route('/export-card')
 def export_card():
@@ -1574,48 +1634,10 @@ def export_card():
     config = load_config(CONFIG_FILE)
     callsign = config.get('CallSign', 'Unknown')
     period = config.get('Period', '')
+    mode = config.get('Mode', 'tx')
+    if mode not in ('tx', 'rx', 'both'):
+        mode = 'tx'
 
-    if not os.path.exists(RAW_DATA_CSV_PATH):
-        return jsonify({"error": "No data available. Submit a query first."}), 404
-
-    try:
-        raw_data = pd.read_csv(RAW_DATA_CSV_PATH)
-        if raw_data.empty:
-            return jsonify({"error": "No data available."}), 404
-
-        raw_time = pd.to_datetime(raw_data['time'])
-        dataset_start_dt = raw_time.min()
-        date_display = dataset_start_dt.strftime('%-d %B %Y')
-        date_for_filename = dataset_start_dt.strftime('%Y-%m-%d')
-
-        total_spots = int(len(raw_data))
-        unique_stations = int(raw_data['rx_sign'].nunique())
-
-        best_row = raw_data.loc[raw_data['snr'].idxmax()]
-        best_snr_value = int(best_row['snr'])
-        best_snr_call = best_row['rx_sign']
-        best_snr_distance = int(best_row['distance'])
-
-        countries_path = os.path.join(WSPR_Analytics.DATA_DIR, f"{WSPR_Analytics.COUNTRIES_NAME}.{WSPR_Analytics.FMT_CSV}")
-        top_countries = []
-        if os.path.exists(countries_path):
-            countries_df = pd.read_csv(countries_path)
-            countries_df = countries_df[countries_df['Country'] != 'Unknown']
-            top_countries = countries_df['Country'].head(5).tolist()
-
-        distances_path = os.path.join(WSPR_Analytics.DATA_DIR, f"{WSPR_Analytics.DISTANCES_NAME}.{WSPR_Analytics.FMT_CSV}")
-        best_dx_call = 'N/A'
-        best_dx_km = 0
-        if os.path.exists(distances_path):
-            distances_df = pd.read_csv(distances_path)
-            if not distances_df.empty:
-                best_dx_call = distances_df.iloc[0]['rx_sign']
-                best_dx_km = int(distances_df.iloc[0]['distance'])
-    except Exception as e:
-        logger.warning(f"Failed to build share card data: {e}")
-        return jsonify({"error": f"Failed to read data: {e}"}), 404
-
-    width, height = 600, 420
     colour_dark = '#343a40'
     colour_muted_light = '#adb5bd'
     colour_text_dark = '#212529'
@@ -1623,72 +1645,240 @@ def export_card():
     colour_body = '#495057'
     colour_light_bg = '#f8f9fa'
     colour_border = '#343a40'
+    colour_divider = '#dee2e6'
+    colour_amber_bg = '#fff3cd'
+    colour_amber_text = '#856404'
 
-    img = Image.new('RGB', (width, height), '#FFFFFF')
-    draw = ImageDraw.Draw(img)
+    try:
+        if mode == 'both':
+            tx_df = read_dataset_for_api('tx')
+            rx_df = read_dataset_for_api('rx')
+            if (tx_df is None or tx_df.empty) and (rx_df is None or rx_df.empty):
+                return jsonify({"error": "No data available. Submit a query first."}), 404
 
-    font_header_bold = load_share_card_font('bold', 22)
-    font_header_sub = load_share_card_font('regular', 14)
-    font_metric_value = load_share_card_font('bold', 36)
-    font_metric_label = load_share_card_font('regular', 12)
-    font_body_bold = load_share_card_font('bold', 15)
-    font_body_regular = load_share_card_font('regular', 15)
-    font_countries_label = load_share_card_font('bold', 12)
-    font_countries_line = load_share_card_font('regular', 16)
-    font_footer_1 = load_share_card_font('regular', 13)
-    font_footer_2 = load_share_card_font('regular', 12)
+            tx_metrics = compute_share_card_metrics(tx_df)
+            rx_metrics = compute_share_card_metrics(rx_df)
 
-    # Section 1 — Header (y 0-80)
-    draw.rectangle([0, 0, width, 80], fill=colour_dark)
-    draw_centred_text(draw, 18, f"{callsign} — WSPR Beacon Report", font_header_bold, '#FFFFFF')
-    draw_centred_text(draw, 50, f"{date_display} · {period}", font_header_sub, colour_muted_light)
+            dataset_start_dt = min(
+                df['time'].min() for df in (tx_df, rx_df) if df is not None and not df.empty
+            )
+            date_display = dataset_start_dt.strftime('%-d %B %Y')
+            date_for_filename = dataset_start_dt.strftime('%Y-%m-%d')
 
-    # Section 2 — Key metrics (y 80-180)
-    draw.line([(0, 80), (width, 80)], fill='#dee2e6', width=1)
-    col_width = width / 2
-    metric_value_y = 105
-    metric_label_y = 150
-    total_spots_text = str(total_spots)
-    unique_stations_text = str(unique_stations)
-    tw = draw.textlength(total_spots_text, font=font_metric_value)
-    draw.text(((col_width - tw) / 2, metric_value_y), total_spots_text, font=font_metric_value, fill=colour_text_dark)
-    lw = draw.textlength('STATIONS HEARD', font=font_metric_label)
-    draw.text(((col_width - lw) / 2, metric_label_y), 'STATIONS HEARD', font=font_metric_label, fill=colour_label)
+            tx_remote = set(tx_df['rx_sign'].unique()) if tx_df is not None and not tx_df.empty else set()
+            rx_remote = set(rx_df['rx_sign'].unique()) if rx_df is not None and not rx_df.empty else set()
+            symmetric_calls = tx_remote & rx_remote
+            symmetric_count = len(symmetric_calls)
 
-    uw = draw.textlength(unique_stations_text, font=font_metric_value)
-    draw.text((col_width + (col_width - uw) / 2, metric_value_y), unique_stations_text, font=font_metric_value, fill=colour_text_dark)
-    ulw = draw.textlength('UNIQUE STATIONS', font=font_metric_label)
-    draw.text((col_width + (col_width - ulw) / 2, metric_label_y), 'UNIQUE STATIONS', font=font_metric_label, fill=colour_label)
+            symmetric_top5 = []
+            if symmetric_count > 0:
+                tx_best = tx_df.loc[tx_df.groupby('rx_sign')['distance'].idxmax()]
+                symmetric_rows = tx_best[tx_best['rx_sign'].isin(symmetric_calls)].sort_values('distance', ascending=False)
+                symmetric_top5 = symmetric_rows['rx_sign'].head(5).tolist()
+            symmetric_remainder = max(0, symmetric_count - 5)
 
-    draw.line([(col_width, 90), (col_width, 170)], fill='#dee2e6', width=1)
+            combined_stations = len(tx_remote | rx_remote)
+            combined_countries = len(tx_metrics['all_countries'] | rx_metrics['all_countries'])
+            combined_spots = tx_metrics['total_spots'] + rx_metrics['total_spots']
+        else:
+            df = read_dataset_for_api(mode)
+            if df is None or df.empty:
+                return jsonify({"error": "No data available. Submit a query first."}), 404
 
-    # Section 3 — DX and SNR (y 180-260)
-    draw.line([(0, 180), (width, 180)], fill='#dee2e6', width=1)
-    pad_x = 24
-    draw_mixed_line(draw, pad_x, 200, [
-        ('Best DX:  ', font_body_bold, colour_text_dark),
-        (f"{best_dx_call}  {best_dx_km} km", font_body_regular, colour_body),
-    ])
-    draw_mixed_line(draw, pad_x, 228, [
-        ('Best SNR: ', font_body_bold, colour_text_dark),
-        (f"{best_snr_call}  {best_snr_value} dB  {best_snr_distance} km", font_body_regular, colour_body),
-    ])
+            metrics = compute_share_card_metrics(df)
+            dataset_start_dt = df['time'].min()
+            date_display = dataset_start_dt.strftime('%-d %B %Y')
+            date_for_filename = dataset_start_dt.strftime('%Y-%m-%d')
+    except Exception as e:
+        logger.warning(f"Failed to build share card data: {e}")
+        return jsonify({"error": f"Failed to read data: {e}"}), 404
 
-    # Section 4 — Top Countries (y 260-340)
-    draw.rectangle([0, 260, width, 340], fill=colour_light_bg)
-    label_text = 'TOP COUNTRIES'
-    lblw = draw.textlength(label_text, font=font_countries_label)
-    draw.text(((width - lblw) / 2, 275), label_text, font=font_countries_label, fill=colour_label)
-    countries_line = ' · '.join(top_countries) if top_countries else 'N/A'
-    draw_centred_text(draw, 300, countries_line, font_countries_line, colour_text_dark)
+    if mode == 'both':
+        width, height = 800, 560
+        mid_x = 400
+        img = Image.new('RGB', (width, height), '#FFFFFF')
+        draw = ImageDraw.Draw(img)
 
-    # Section 5 — Footer (y 340-420)
-    draw.rectangle([0, 340, width, height], fill=colour_dark)
-    draw_centred_text(draw, 362, 'Generated by WSPR Analytics', font_footer_1, colour_muted_light)
-    draw_centred_text(draw, 385, 'github.com/MusicalLoop/WSPR_Analytics', font_footer_2, colour_label)
+        font_header_bold = load_share_card_font('bold', 22)
+        font_header_sub = load_share_card_font('regular', 14)
+        font_col_header = load_share_card_font('bold', 13)
+        font_metric_value = load_share_card_font('bold', 32)
+        font_metric_label = load_share_card_font('regular', 10)
+        font_dxsnr_label = load_share_card_font('bold', 14)
+        font_dxsnr_value = load_share_card_font('regular', 14)
+        font_symmetric_bold = load_share_card_font('bold', 14)
+        font_symmetric_regular = load_share_card_font('regular', 13)
+        font_combined = load_share_card_font('regular', 12)
+        font_countries_header = load_share_card_font('bold', 10)
+        font_countries_body = load_share_card_font('regular', 12)
+        font_footer_1 = load_share_card_font('regular', 13)
+        font_footer_2 = load_share_card_font('regular', 12)
 
-    # Border
-    draw.rectangle([0, 0, width - 1, height - 1], outline=colour_border, width=2)
+        # Section 1 — Header (y 0-80)
+        draw.rectangle([0, 0, width, 80], fill=colour_dark)
+        draw_centred_text(draw, 18, f"{callsign} — WSPR TX + RX Report", font_header_bold, '#FFFFFF', width=width)
+        draw_centred_text(draw, 50, f"{date_display} · {period}", font_header_sub, colour_muted_light, width=width)
+
+        # Section 2 — Column headers (y 80-110)
+        draw.rectangle([0, 80, width, 110], fill=colour_light_bg)
+        draw_centred_text_in(draw, 0, mid_x, 90, 'TX — Transmit', font_col_header, colour_body)
+        draw_centred_text_in(draw, mid_x, width, 90, 'RX — Receive', font_col_header, colour_body)
+        draw.line([(mid_x, 80), (mid_x, 110)], fill=colour_divider, width=1)
+        draw.line([(0, 110), (width, 110)], fill=colour_divider, width=1)
+
+        # Section 3 — Key metrics (y 110-230)
+        draw_centred_text_in(draw, 0, mid_x, 118, str(tx_metrics['total_spots']), font_metric_value, colour_text_dark)
+        draw_centred_text_in(draw, 0, mid_x, 155, 'SPOTS TRANSMITTED', font_metric_label, colour_label)
+        draw_centred_text_in(draw, 0, mid_x, 172, str(tx_metrics['unique_stations']), font_metric_value, colour_text_dark)
+        draw_centred_text_in(draw, 0, mid_x, 209, 'STATIONS', font_metric_label, colour_label)
+
+        draw_centred_text_in(draw, mid_x, width, 118, str(rx_metrics['total_spots']), font_metric_value, colour_text_dark)
+        draw_centred_text_in(draw, mid_x, width, 155, 'SPOTS RECEIVED', font_metric_label, colour_label)
+        draw_centred_text_in(draw, mid_x, width, 172, str(rx_metrics['unique_stations']), font_metric_value, colour_text_dark)
+        draw_centred_text_in(draw, mid_x, width, 209, 'TRANSMITTERS', font_metric_label, colour_label)
+
+        draw.line([(mid_x, 110), (mid_x, 230)], fill=colour_divider, width=1)
+        draw.line([(0, 230), (width, 230)], fill=colour_divider, width=1)
+
+        # Section 4 — DX and SNR (y 230-320)
+        pad_x = 24
+        draw_mixed_line(draw, pad_x, 255, [
+            ('Best DX: ', font_dxsnr_label, colour_text_dark),
+            (f"{tx_metrics['best_dx_call']} {tx_metrics['best_dx_km']} km", font_dxsnr_value, colour_body),
+        ])
+        draw_mixed_line(draw, pad_x, 285, [
+            ('Best SNR: ', font_dxsnr_label, colour_text_dark),
+            (f"{tx_metrics['best_snr_call']} {tx_metrics['best_snr_value']} dB", font_dxsnr_value, colour_body),
+        ])
+        draw_mixed_line(draw, mid_x + pad_x, 255, [
+            ('Best DX: ', font_dxsnr_label, colour_text_dark),
+            (f"{rx_metrics['best_dx_call']} {rx_metrics['best_dx_km']} km", font_dxsnr_value, colour_body),
+        ])
+        draw_mixed_line(draw, mid_x + pad_x, 285, [
+            ('Best SNR: ', font_dxsnr_label, colour_text_dark),
+            (f"{rx_metrics['best_snr_call']} {rx_metrics['best_snr_value']} dB", font_dxsnr_value, colour_body),
+        ])
+        draw.line([(mid_x, 230), (mid_x, 320)], fill=colour_divider, width=1)
+        draw.line([(0, 320), (width, 320)], fill=colour_divider, width=1)
+
+        # Section 5 — Symmetric paths (y 320-380), skipped (left blank) if none
+        if symmetric_count > 0:
+            draw.rectangle([0, 320, width, 380], fill=colour_amber_bg)
+            plural = 's' if symmetric_count != 1 else ''
+            draw_centred_text(draw, 335, f"★ {symmetric_count} confirmed two-way path{plural}", font_symmetric_bold, colour_amber_text, width=width)
+            symmetric_line = ' · '.join(symmetric_top5)
+            if symmetric_remainder > 0:
+                symmetric_line += f" · +{symmetric_remainder} more"
+            draw_centred_text(draw, 358, symmetric_line, font_symmetric_regular, colour_amber_text, width=width)
+        draw.line([(0, 380), (width, 380)], fill=colour_divider, width=1)
+
+        # Section 6 — Combined metrics (y 380-415)
+        draw.rectangle([0, 380, width, 415], fill=colour_light_bg)
+        combined_line = f"Combined: {combined_stations} stations · {combined_countries} countries · {combined_spots} spots"
+        draw_centred_text(draw, 391, combined_line, font_combined, colour_label, width=width)
+        draw.line([(0, 415), (width, 415)], fill=colour_divider, width=1)
+
+        # Section 7 — Top Countries (y 415-505)
+        column_text_width = mid_x - pad_x - pad_x
+        tx_countries_line = fit_joined_text(draw, tx_metrics['top_countries'], font_countries_body, column_text_width)
+        rx_countries_line = fit_joined_text(draw, rx_metrics['top_countries'], font_countries_body, column_text_width)
+        draw.text((pad_x, 428), 'TX COUNTRIES', font=font_countries_header, fill=colour_label)
+        draw.text((pad_x, 450), tx_countries_line, font=font_countries_body, fill=colour_text_dark)
+        draw.text((mid_x + pad_x, 428), 'RX COUNTRIES', font=font_countries_header, fill=colour_label)
+        draw.text((mid_x + pad_x, 450), rx_countries_line, font=font_countries_body, fill=colour_text_dark)
+        draw.line([(mid_x, 415), (mid_x, 505)], fill=colour_divider, width=1)
+        draw.line([(0, 505), (width, 505)], fill=colour_divider, width=1)
+
+        # Section 8 — Footer (y 505-560)
+        draw.rectangle([0, 505, width, height], fill=colour_dark)
+        draw_centred_text(draw, 522, 'Generated by WSPR Analytics', font_footer_1, colour_muted_light, width=width)
+        draw_centred_text(draw, 542, 'github.com/MusicalLoop/WSPR_Analytics', font_footer_2, colour_label, width=width)
+
+        draw.rectangle([0, 0, width - 1, height - 1], outline=colour_border, width=2)
+
+        download_name = f'wspr_{callsign}_both_{date_for_filename}.png'
+    else:
+        width, height = 600, 420
+        img = Image.new('RGB', (width, height), '#FFFFFF')
+        draw = ImageDraw.Draw(img)
+
+        font_header_bold = load_share_card_font('bold', 22)
+        font_header_sub = load_share_card_font('regular', 14)
+        font_metric_value = load_share_card_font('bold', 36)
+        font_metric_label = load_share_card_font('regular', 12)
+        font_body_bold = load_share_card_font('bold', 15)
+        font_body_regular = load_share_card_font('regular', 15)
+        font_countries_label = load_share_card_font('bold', 12)
+        font_countries_line = load_share_card_font('regular', 16)
+        font_footer_1 = load_share_card_font('regular', 13)
+        font_footer_2 = load_share_card_font('regular', 12)
+
+        if mode == 'rx':
+            card_title = f"{callsign} — WSPR Receive Report"
+            metric1_label = 'Spots Received'
+            metric2_label = 'Unique Transmitters'
+            dx_label = 'Best DX Received: '
+            snr_label = 'Best SNR Received: '
+            countries_label = 'Countries Received From'
+        else:
+            card_title = f"{callsign} — WSPR Beacon Report"
+            metric1_label = 'STATIONS HEARD'
+            metric2_label = 'UNIQUE STATIONS'
+            dx_label = 'Best DX:  '
+            snr_label = 'Best SNR: '
+            countries_label = 'TOP COUNTRIES'
+
+        # Section 1 — Header (y 0-80)
+        draw.rectangle([0, 0, width, 80], fill=colour_dark)
+        draw_centred_text(draw, 18, card_title, font_header_bold, '#FFFFFF')
+        draw_centred_text(draw, 50, f"{date_display} · {period}", font_header_sub, colour_muted_light)
+
+        # Section 2 — Key metrics (y 80-180)
+        draw.line([(0, 80), (width, 80)], fill=colour_divider, width=1)
+        col_width = width / 2
+        metric_value_y = 105
+        metric_label_y = 150
+        total_spots_text = str(metrics['total_spots'])
+        unique_stations_text = str(metrics['unique_stations'])
+        tw = draw.textlength(total_spots_text, font=font_metric_value)
+        draw.text(((col_width - tw) / 2, metric_value_y), total_spots_text, font=font_metric_value, fill=colour_text_dark)
+        lw = draw.textlength(metric1_label, font=font_metric_label)
+        draw.text(((col_width - lw) / 2, metric_label_y), metric1_label, font=font_metric_label, fill=colour_label)
+
+        uw = draw.textlength(unique_stations_text, font=font_metric_value)
+        draw.text((col_width + (col_width - uw) / 2, metric_value_y), unique_stations_text, font=font_metric_value, fill=colour_text_dark)
+        ulw = draw.textlength(metric2_label, font=font_metric_label)
+        draw.text((col_width + (col_width - ulw) / 2, metric_label_y), metric2_label, font=font_metric_label, fill=colour_label)
+
+        draw.line([(col_width, 90), (col_width, 170)], fill=colour_divider, width=1)
+
+        # Section 3 — DX and SNR (y 180-260)
+        draw.line([(0, 180), (width, 180)], fill=colour_divider, width=1)
+        pad_x = 24
+        draw_mixed_line(draw, pad_x, 200, [
+            (dx_label, font_body_bold, colour_text_dark),
+            (f"{metrics['best_dx_call']}  {metrics['best_dx_km']} km", font_body_regular, colour_body),
+        ])
+        draw_mixed_line(draw, pad_x, 228, [
+            (snr_label, font_body_bold, colour_text_dark),
+            (f"{metrics['best_snr_call']}  {metrics['best_snr_value']} dB  {metrics['best_snr_distance']} km", font_body_regular, colour_body),
+        ])
+
+        # Section 4 — Top Countries (y 260-340)
+        draw.rectangle([0, 260, width, 340], fill=colour_light_bg)
+        lblw = draw.textlength(countries_label, font=font_countries_label)
+        draw.text(((width - lblw) / 2, 275), countries_label, font=font_countries_label, fill=colour_label)
+        countries_line = ' · '.join(metrics['top_countries']) if metrics['top_countries'] else 'N/A'
+        draw_centred_text(draw, 300, countries_line, font_countries_line, colour_text_dark)
+
+        # Section 5 — Footer (y 340-420)
+        draw.rectangle([0, 340, width, height], fill=colour_dark)
+        draw_centred_text(draw, 362, 'Generated by WSPR Analytics', font_footer_1, colour_muted_light)
+        draw_centred_text(draw, 385, 'github.com/MusicalLoop/WSPR_Analytics', font_footer_2, colour_label)
+
+        draw.rectangle([0, 0, width - 1, height - 1], outline=colour_border, width=2)
+
+        download_name = f'wspr_{callsign}_{mode}_{date_for_filename}.png'
 
     img_bytes = io.BytesIO()
     img.save(img_bytes, format='PNG')
@@ -1698,7 +1888,7 @@ def export_card():
         img_bytes,
         mimetype='image/png',
         as_attachment=True,
-        download_name=f'wspr_{callsign}_{date_for_filename}.png'
+        download_name=download_name
     )
 
 def period_list():
