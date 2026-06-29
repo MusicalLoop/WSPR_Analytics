@@ -548,10 +548,21 @@ def dashboard():
                         ).add_to(distance_group)
 
                 if tx_receivers is not None and symmetric_calls:
+                    rx_snr_by_call = (
+                        dict(zip(rx_receivers['rx_sign'], rx_receivers['snr']))
+                        if rx_receivers is not None else {}
+                    )
                     symmetric_rows = tx_receivers[tx_receivers['rx_sign'].isin(symmetric_calls)]
                     for _, row in symmetric_rows.iterrows():
                         _, distance_group = distance_group_for(row['distance'])
-                        popup_html = f"<b>{row['rx_sign']}</b><br>Two-way path confirmed"
+                        tx_snr = format_snr(row['snr']) or 'N/A'
+                        rx_snr = format_snr(rx_snr_by_call.get(row['rx_sign'])) or 'N/A'
+                        popup_html = (
+                            f"<b>{row['rx_sign']}</b> &middot; {row['distance']:.0f} km "
+                            f"&mdash; Two-way path confirmed<br>"
+                            f"TX: heard you at {tx_snr}<br>"
+                            f"RX: you heard them at {rx_snr}"
+                        )
                         folium.CircleMarker(
                             location=[row['rx_lat'], row['rx_lon']],
                             radius=10,
