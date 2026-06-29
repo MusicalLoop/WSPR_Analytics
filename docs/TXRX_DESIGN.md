@@ -2,7 +2,7 @@
 
 ## Status
 Built and deployed on feature/txrx. 
-Merged to main: pending.
+Merged to main: yes.
 
 ## Overview
 Extends WSPR Analytics to support receive (RX) analysis 
