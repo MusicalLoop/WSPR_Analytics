@@ -292,10 +292,20 @@
             options: { position: 'bottomleft' },
             onAdd: function() {
               var div = L.DomUtil.create('div', 'wspr-timestamp-control');
+              {% if mode == 'both' %}
+              div.innerHTML =
+                '<div><span style="color:#333">&#9679;</span> TX Spots (heard you)</div>' +
+                '<div><span style="color:#333">&#9675;</span> RX Spots (you heard)</div>' +
+                '<div><span style="color:#FFD700">&#9679;</span> Symmetric path (two-way)</div>' +
+                '<div><span style="color:green">&#9679;</span> Under 500 km</div>' +
+                '<div><span style="color:orange">&#9679;</span> 500 &ndash; 1,000 km</div>' +
+                '<div><span style="color:red">&#9679;</span> Over 1,000 km</div>';
+              {% else %}
               div.innerHTML =
                 '<div><span style="color:green">&#9679;</span> Under 500 km</div>' +
                 '<div><span style="color:orange">&#9679;</span> 500 &ndash; 1,000 km</div>' +
                 '<div><span style="color:red">&#9679;</span> Over 1,000 km</div>';
+              {% endif %}
               return div;
             }
           });

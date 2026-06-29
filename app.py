@@ -462,90 +462,216 @@ def dashboard():
         try:
             folium_map = folium.Map(location=[tx_lat, tx_lon], zoom_start=5, tiles='OpenStreetMap')
 
-            receivers = raw_data.loc[raw_data.groupby('rx_sign')['snr'].idxmax()]
+            if mode == 'both':
+                # Distance FeatureGroups (lines live here, same convention as
+                # the TX/RX-only map below but inverted: there, distance
+                # groups hold markers and country groups hold lines; here
+                # direction groups hold markers and distance groups hold lines)
+                fg_under_500 = folium.FeatureGroup(name='Under 500 km', show=True)
+                fg_500_1000 = folium.FeatureGroup(name='500 – 1,000 km', show=True)
+                fg_over_1000 = folium.FeatureGroup(name='Over 1,000 km', show=True)
+                for fg in (fg_under_500, fg_500_1000, fg_over_1000):
+                    fg.add_to(folium_map)
 
-            raw_data_countries = raw_data['rx_sign'].map(country_by_call).fillna('Unknown')
-            country_counts = raw_data_countries.value_counts()
-            country_counts = country_counts[country_counts.index != 'Unknown']
-            top_countries = list(country_counts.head(10).index)
+                # Direction FeatureGroups (markers live here)
+                fg_tx = folium.FeatureGroup(name='TX Spots (heard you)', show=True)
+                fg_rx = folium.FeatureGroup(name='RX Spots (you heard)', show=True)
+                fg_symmetric = folium.FeatureGroup(name='Symmetric Paths', show=True)
+                for fg in (fg_tx, fg_rx, fg_symmetric):
+                    fg.add_to(folium_map)
 
-            # Distance FeatureGroups (markers live here)
-            fg_under_500 = folium.FeatureGroup(name='Under 500 km', show=True)
-            fg_500_1000 = folium.FeatureGroup(name='500 – 1,000 km', show=True)
-            fg_over_1000 = folium.FeatureGroup(name='Over 1,000 km', show=True)
-            for fg in (fg_under_500, fg_500_1000, fg_over_1000):
-                fg.add_to(folium_map)
+                def distance_group_for(distance_km):
+                    if distance_km < 500:
+                        return 'green', fg_under_500
+                    elif distance_km <= 1000:
+                        return 'orange', fg_500_1000
+                    return 'red', fg_over_1000
 
-            # Country FeatureGroups (propagation lines live here)
-            country_feature_groups = {}
-            for country_name in top_countries:
-                country_feature_groups[country_name] = folium.FeatureGroup(name=country_name, show=True)
-            country_feature_groups['Other'] = folium.FeatureGroup(name='Other', show=True)
-            for fg in country_feature_groups.values():
-                fg.add_to(folium_map)
+                tx_raw_data = tx_result['raw_data'] if tx_result and tx_result['raw_data'] is not None else None
+                rx_raw_data = rx_result['raw_data'] if rx_result and rx_result['raw_data'] is not None else None
 
-            for _, rx_row in receivers.iterrows():
-                rx_distance = rx_row['distance']
-                if rx_distance < 500:
-                    line_colour = 'green'
-                    distance_group = fg_under_500
-                elif rx_distance <= 1000:
-                    line_colour = 'orange'
-                    distance_group = fg_500_1000
-                else:
-                    line_colour = 'red'
-                    distance_group = fg_over_1000
-
-                country_name = country_by_call.get(rx_row['rx_sign'], 'Unknown')
-                country_group = country_feature_groups.get(country_name, country_feature_groups['Other'])
-
-                popup_html = (
-                    f"<b>{rx_row['rx_sign']}</b><br>"
-                    f"Distance: {rx_distance:.0f} km<br>"
-                    f"Best SNR: {rx_row['snr']} dB<br>"
-                    f"Grid: {rx_row['rx_loc']}<br>"
-                    f"Country: {country_name}"
+                tx_receivers = (
+                    tx_raw_data.loc[tx_raw_data.groupby('rx_sign')['snr'].idxmax()]
+                    if tx_raw_data is not None else None
+                )
+                rx_receivers = (
+                    rx_raw_data.loc[rx_raw_data.groupby('rx_sign')['snr'].idxmax()]
+                    if rx_raw_data is not None else None
                 )
 
-                # A folium element can only belong to one FeatureGroup, so the
-                # marker (distance dimension) and line (country dimension) are
-                # split across the two groups they need to be filterable by.
-                folium.CircleMarker(
-                    location=[rx_row['rx_lat'], rx_row['rx_lon']],
-                    radius=6,
-                    popup=folium.Popup(popup_html, max_width=220),
-                    color=line_colour,
-                    fill=True,
-                    fillColor=line_colour,
-                    fillOpacity=0.8
-                ).add_to(distance_group)
+                if tx_receivers is not None:
+                    for _, row in tx_receivers.iterrows():
+                        colour, distance_group = distance_group_for(row['distance'])
+                        popup_html = (
+                            f"<b>{row['rx_sign']}</b><br>"
+                            f"Distance: {row['distance']:.0f} km<br>"
+                            f"Best SNR: {row['snr']} dB<br>"
+                            f"Grid: {row['rx_loc']}"
+                        )
+                        folium.CircleMarker(
+                            location=[row['rx_lat'], row['rx_lon']],
+                            radius=6,
+                            popup=folium.Popup(popup_html, max_width=220),
+                            color=colour,
+                            fill=True,
+                            fillColor=colour,
+                            fillOpacity=0.8
+                        ).add_to(fg_tx)
+                        folium.PolyLine(
+                            locations=[[tx_lat, tx_lon], [row['rx_lat'], row['rx_lon']]],
+                            color=colour,
+                            weight=2,
+                            opacity=0.7
+                        ).add_to(distance_group)
 
-                folium.PolyLine(
-                    locations=[[tx_lat, tx_lon], [rx_row['rx_lat'], rx_row['rx_lon']]],
-                    color=line_colour,
-                    weight=2,
-                    opacity=0.7
-                ).add_to(country_group)
+                if rx_receivers is not None:
+                    for _, row in rx_receivers.iterrows():
+                        colour, distance_group = distance_group_for(row['distance'])
+                        popup_html = (
+                            f"<b>{row['rx_sign']}</b><br>"
+                            f"Distance: {row['distance']:.0f} km<br>"
+                            f"Best SNR: {row['snr']} dB<br>"
+                            f"Grid: {row['rx_loc']}"
+                        )
+                        folium.CircleMarker(
+                            location=[row['rx_lat'], row['rx_lon']],
+                            radius=8,
+                            popup=folium.Popup(popup_html, max_width=220),
+                            color=colour,
+                            fill=False
+                        ).add_to(fg_rx)
+                        folium.PolyLine(
+                            locations=[[row['rx_lat'], row['rx_lon']], [tx_lat, tx_lon]],
+                            color=colour,
+                            weight=2,
+                            opacity=0.7
+                        ).add_to(distance_group)
 
-            # Distance rings stay outside any FeatureGroup so they're always visible.
-            for ring_radius_km in (500, 1000, 1500):
-                folium.Circle(
-                    location=[tx_lat, tx_lon],
-                    radius=ring_radius_km * 1000,
-                    color='grey',
-                    fill=False,
-                    dashArray='5, 5'
+                if tx_receivers is not None and symmetric_calls:
+                    symmetric_rows = tx_receivers[tx_receivers['rx_sign'].isin(symmetric_calls)]
+                    for _, row in symmetric_rows.iterrows():
+                        _, distance_group = distance_group_for(row['distance'])
+                        popup_html = f"<b>{row['rx_sign']}</b><br>Two-way path confirmed"
+                        folium.CircleMarker(
+                            location=[row['rx_lat'], row['rx_lon']],
+                            radius=10,
+                            popup=folium.Popup(popup_html, max_width=220),
+                            color='#FFD700',
+                            fill=True,
+                            fillColor='#FFD700',
+                            fillOpacity=0.9
+                        ).add_to(fg_symmetric)
+                        folium.PolyLine(
+                            locations=[[tx_lat, tx_lon], [row['rx_lat'], row['rx_lon']]],
+                            color='#FFD700',
+                            weight=3,
+                            opacity=0.9
+                        ).add_to(distance_group)
+
+                # Distance rings stay outside any FeatureGroup so they're always visible.
+                for ring_radius_km in (500, 1000, 1500):
+                    folium.Circle(
+                        location=[tx_lat, tx_lon],
+                        radius=ring_radius_km * 1000,
+                        color='grey',
+                        fill=False,
+                        dashArray='5, 5'
+                    ).add_to(folium_map)
+
+                GroupedLayerControl(
+                    groups={
+                        'Direction': [fg_tx, fg_rx, fg_symmetric],
+                        'Distance': [fg_under_500, fg_500_1000, fg_over_1000]
+                    },
+                    exclusive_groups=False,
+                    collapsed=True,
+                    position='topright'
                 ).add_to(folium_map)
+            else:
+                receivers = raw_data.loc[raw_data.groupby('rx_sign')['snr'].idxmax()]
 
-            GroupedLayerControl(
-                groups={
-                    'Distance': [fg_under_500, fg_500_1000, fg_over_1000],
-                    'Countries': list(country_feature_groups.values())
-                },
-                exclusive_groups=False,
-                collapsed=True,
-                position='topright'
-            ).add_to(folium_map)
+                raw_data_countries = raw_data['rx_sign'].map(country_by_call).fillna('Unknown')
+                country_counts = raw_data_countries.value_counts()
+                country_counts = country_counts[country_counts.index != 'Unknown']
+                top_countries = list(country_counts.head(10).index)
+
+                # Distance FeatureGroups (markers live here)
+                fg_under_500 = folium.FeatureGroup(name='Under 500 km', show=True)
+                fg_500_1000 = folium.FeatureGroup(name='500 – 1,000 km', show=True)
+                fg_over_1000 = folium.FeatureGroup(name='Over 1,000 km', show=True)
+                for fg in (fg_under_500, fg_500_1000, fg_over_1000):
+                    fg.add_to(folium_map)
+
+                # Country FeatureGroups (propagation lines live here)
+                country_feature_groups = {}
+                for country_name in top_countries:
+                    country_feature_groups[country_name] = folium.FeatureGroup(name=country_name, show=True)
+                country_feature_groups['Other'] = folium.FeatureGroup(name='Other', show=True)
+                for fg in country_feature_groups.values():
+                    fg.add_to(folium_map)
+
+                for _, rx_row in receivers.iterrows():
+                    rx_distance = rx_row['distance']
+                    if rx_distance < 500:
+                        line_colour = 'green'
+                        distance_group = fg_under_500
+                    elif rx_distance <= 1000:
+                        line_colour = 'orange'
+                        distance_group = fg_500_1000
+                    else:
+                        line_colour = 'red'
+                        distance_group = fg_over_1000
+
+                    country_name = country_by_call.get(rx_row['rx_sign'], 'Unknown')
+                    country_group = country_feature_groups.get(country_name, country_feature_groups['Other'])
+
+                    popup_html = (
+                        f"<b>{rx_row['rx_sign']}</b><br>"
+                        f"Distance: {rx_distance:.0f} km<br>"
+                        f"Best SNR: {rx_row['snr']} dB<br>"
+                        f"Grid: {rx_row['rx_loc']}<br>"
+                        f"Country: {country_name}"
+                    )
+
+                    # A folium element can only belong to one FeatureGroup, so the
+                    # marker (distance dimension) and line (country dimension) are
+                    # split across the two groups they need to be filterable by.
+                    folium.CircleMarker(
+                        location=[rx_row['rx_lat'], rx_row['rx_lon']],
+                        radius=6,
+                        popup=folium.Popup(popup_html, max_width=220),
+                        color=line_colour,
+                        fill=True,
+                        fillColor=line_colour,
+                        fillOpacity=0.8
+                    ).add_to(distance_group)
+
+                    folium.PolyLine(
+                        locations=[[tx_lat, tx_lon], [rx_row['rx_lat'], rx_row['rx_lon']]],
+                        color=line_colour,
+                        weight=2,
+                        opacity=0.7
+                    ).add_to(country_group)
+
+                # Distance rings stay outside any FeatureGroup so they're always visible.
+                for ring_radius_km in (500, 1000, 1500):
+                    folium.Circle(
+                        location=[tx_lat, tx_lon],
+                        radius=ring_radius_km * 1000,
+                        color='grey',
+                        fill=False,
+                        dashArray='5, 5'
+                    ).add_to(folium_map)
+
+                GroupedLayerControl(
+                    groups={
+                        'Distance': [fg_under_500, fg_500_1000, fg_over_1000],
+                        'Countries': list(country_feature_groups.values())
+                    },
+                    exclusive_groups=False,
+                    collapsed=True,
+                    position='topright'
+                ).add_to(folium_map)
 
             map_root = folium_map.get_root()
             map_root.render()
