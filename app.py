@@ -73,7 +73,9 @@ def adaptive_ring_distances(max_distance_km):
 
 def draw_distance_rings(folium_map, tx_lat, tx_lon, max_distance_km):
     """Draws dashed distance rings (adaptive_ring_distances) centred on the
-    TX QTH, each labelled with its distance due north of the QTH."""
+    TX QTH, each labelled with its distance due south of the QTH (clamped
+    to -60° latitude so labels for large rings don't run off a Mercator
+    map)."""
     for ring_radius_km in adaptive_ring_distances(max_distance_km):
         folium.Circle(
             location=[tx_lat, tx_lon],
@@ -83,7 +85,8 @@ def draw_distance_rings(folium_map, tx_lat, tx_lon, max_distance_km):
             dashArray='5, 5'
         ).add_to(folium_map)
 
-        label_lat = tx_lat + (ring_radius_km / 111.0)
+        label_lat = tx_lat - (ring_radius_km / 111.0)
+        label_lat = max(label_lat, -60.0)
         label_lon = tx_lon
         folium.Marker(
             location=[label_lat, label_lon],
@@ -187,6 +190,32 @@ EMPTY_CHART_SERIES = dict(
     azimuth_chart_data=json.dumps({'labels': AZIMUTH_SECTOR_ORDER, 'values': [0] * len(AZIMUTH_SECTOR_ORDER)}),
     propagation_chart_data=json.dumps({'labels': [], 'spots': [], 'snr': []}),
 )
+
+FIXED_DISTANCE_BIN_EDGES = [0, 500, 1000, 2000, 5000, 10000, 999999]
+FIXED_DISTANCE_BIN_LABELS = [
+    "0-500 km", "500-1,000 km", "1,000-2,000 km",
+    "2,000-5,000 km", "5,000-10,000 km", "10,000+ km"
+]
+
+def fixed_distance_bins(df):
+    """
+    Both mode's Spot Count by Distance Band chart needs TX and RX on
+    identical bin boundaries for true grouped bars — frequencyBinning()'s
+    qcut bins are computed independently per dataset from each dataset's
+    own quantiles and essentially never align. Returns {label: count} for
+    every fixed label, 0 for bins with no spots in df.
+    """
+    counts = dict.fromkeys(FIXED_DISTANCE_BIN_LABELS, 0)
+    if df is None or df.empty:
+        return counts
+    binned = pd.cut(
+        df['distance'], bins=FIXED_DISTANCE_BIN_EDGES,
+        labels=FIXED_DISTANCE_BIN_LABELS, right=True, include_lowest=True
+    )
+    value_counts = binned.value_counts()
+    for label in FIXED_DISTANCE_BIN_LABELS:
+        counts[label] = int(value_counts.get(label, 0))
+    return counts
 
 def build_chart_series(result):
     """
@@ -1172,6 +1201,21 @@ def dashboard():
     rx_snr_scatter_data = rx_chart_series['snr_scatter_data']
     rx_azimuth_chart_data = rx_chart_series['azimuth_chart_data']
     rx_propagation_chart_data = rx_chart_series['propagation_chart_data']
+
+    # Both mode: override the frequency series with fixed, shared distance
+    # bins (see fixed_distance_bins) so the Spot Count by Distance Band
+    # chart can plot TX and RX as true grouped bars on identical categories.
+    if mode == 'both':
+        tx_bins = fixed_distance_bins(tx_result['raw_data'] if tx_result else None)
+        rx_bins = fixed_distance_bins(rx_result['raw_data'] if rx_result else None)
+        tx_freq_chart_data = json.dumps({
+            'labels': FIXED_DISTANCE_BIN_LABELS,
+            'values': [tx_bins[label] for label in FIXED_DISTANCE_BIN_LABELS]
+        })
+        rx_freq_chart_data = json.dumps({
+            'labels': FIXED_DISTANCE_BIN_LABELS,
+            'values': [rx_bins[label] for label in FIXED_DISTANCE_BIN_LABELS]
+        })
 
     return render_template(
         'dashboard.html',

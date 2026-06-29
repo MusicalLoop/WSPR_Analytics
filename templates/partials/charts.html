@@ -94,17 +94,16 @@
     var charts = [];
 
     {% if mode == 'both' %}
-    var freqMerged = mergeLabelledSeries(
-        txFreqChartData.labels, txFreqChartData.values,
-        rxFreqChartData.labels, rxFreqChartData.values, 0
-    );
+    {# TX and RX frequency series now share identical fixed distance bins
+       (see fixed_distance_bins() in app.py), so they plot directly on the
+       same labels — no mergeLabelledSeries() alignment needed here. #}
     charts.push(new Chart(document.getElementById('chartFrequency'), {
         type: 'bar',
         data: {
-            labels: freqMerged.labels,
+            labels: txFreqChartData.labels,
             datasets: [
-                { label: 'TX', data: freqMerged.txValues, backgroundColor: 'rgba(54, 162, 235, 0.7)' },
-                { label: 'RX', data: freqMerged.rxValues, backgroundColor: 'rgba(23, 162, 184, 0.7)' }
+                { label: 'TX', data: txFreqChartData.values, backgroundColor: 'rgba(54, 162, 235, 0.7)' },
+                { label: 'RX', data: rxFreqChartData.values, backgroundColor: 'rgba(23, 162, 184, 0.7)' }
             ]
         },
         options: {
