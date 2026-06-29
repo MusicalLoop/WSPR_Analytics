@@ -225,44 +225,134 @@
 
     <!-- Analysis tab -->
     <div class="tab-pane fade" id="analysis-pane" role="tabpanel" aria-labelledby="analysis-tab" tabindex="0">
+        {% if mode == 'both' %}
+        <p class="text-muted small">
+            Each table can be switched between TX and RX data. "Both*" currently shows the
+            TX dataset — a true combined view is a planned enhancement, not yet implemented.
+        </p>
+        {% endif %}
         <div class="row">
             <div class="col-md-6 mb-4">
+                {% if mode == 'both' %}
+                {{ macros.render_table_toggle(table_id="hourly") }}
+                <div id="hourly-tx">
+                    {{ macros.render_table_card(title="Hourly Distance", caption="WSPR distance analysis per hour.",
+                    headers=["Time", "Mean", "Min", "Max", "Spots"], rows=tx_hourlyList, time_format="%d-%m-%Y %H:%M") }}
+                </div>
+                <div id="hourly-rx" style="display:none">
+                    {{ macros.render_table_card(title="Hourly Distance", caption="WSPR distance analysis per hour.",
+                    headers=["Time", "Mean", "Min", "Max", "Spots"], rows=rx_hourlyList, time_format="%d-%m-%Y %H:%M") }}
+                </div>
+                {% else %}
                 {{ macros.render_table_card(title="Hourly Distance", caption="WSPR distance analysis per hour.",
                 headers=["Time", "Mean", "Min", "Max", "Spots"], rows=hourlyList, time_format="%d-%m-%Y %H:%M") }}
+                {% endif %}
             </div>
             <div class="col-md-6 mb-4">
+                {% if mode == 'both' %}
+                {{ macros.render_table_toggle(table_id="callsigns") }}
+                <div id="callsigns-tx">
+                    {{ macros.render_table_card(title="Top Call Signs", caption="Most frequently spotted WSPR call signs.",
+                    headers=["Call Sign", "Count", "Grid", "Distance (km)"], rows=tx_callSignList) }}
+                </div>
+                <div id="callsigns-rx" style="display:none">
+                    {{ macros.render_table_card(title="Top Transmitters", caption="Most frequently received WSPR transmitters.",
+                    headers=["Call Sign", "Count", "Grid", "Distance (km)"], rows=rx_callSignList) }}
+                </div>
+                {% else %}
                 {{ macros.render_table_card(title="Top Call Signs", caption="Most frequently received WSPR transmitters." if mode == 'rx' else "Most frequently spotted WSPR call signs.",
                 headers=["Call Sign", "Count", "Grid", "Distance (km)"], rows=callSignList) }}
+                {% endif %}
             </div>
         </div>
         <div class="row">
             <div class="col-md-6 mb-4">
+                {% if mode == 'both' %}
+                {{ macros.render_table_toggle(table_id="distance") }}
+                <div id="distance-tx">
+                    {{ macros.render_table_card(title="Furthest Stations", caption="WSPR stations received from the greatest distances.",
+                    headers=["Call Sign", "Grid", "Distance (km)", "Count", "Best SNR", "Mean SNR"], rows=tx_distanceList) }}
+                </div>
+                <div id="distance-rx" style="display:none">
+                    {{ macros.render_table_card(title="Furthest Received", caption="WSPR transmitters received from the greatest distances.",
+                    headers=["Call Sign", "Grid", "Distance (km)", "Count", "Best SNR", "Mean SNR"], rows=rx_distanceList) }}
+                </div>
+                {% else %}
                 {{ macros.render_table_card(title="Furthest Stations", caption="WSPR transmitters received from the
                 greatest distances." if mode == 'rx' else "WSPR stations received from the greatest distances.", headers=["Call Sign", "Grid", "Distance (km)", "Count", "Best SNR", "Mean SNR"], rows=distanceList) }}
+                {% endif %}
             </div>
             <div class="col-md-6 mb-4">
+                {% if mode == 'both' %}
+                {{ macros.render_table_toggle(table_id="countries") }}
+                <div id="countries-tx">
+                    {{ macros.render_table_card(title="Countries", caption="WSPR spot counts grouped by originating country.",
+                    headers=["Country", "Spots"], rows=tx_countryList) }}
+                </div>
+                <div id="countries-rx" style="display:none">
+                    {{ macros.render_table_card(title="Countries", caption="WSPR spot counts grouped by country received from.",
+                    headers=["Country", "Spots"], rows=rx_countryList) }}
+                </div>
+                {% else %}
                 {{ macros.render_table_card(title="Countries", caption="WSPR spot counts grouped by originating
                 country.", headers=["Country", "Spots"], rows=countryList) }}
+                {% endif %}
             </div>
         </div>
         <div class="row">
             <div class="col-md-6 mb-4">
+                {% if mode == 'both' %}
+                {{ macros.render_table_toggle(table_id="bestears") }}
+                <div id="bestears-tx">
+                    {{ macros.render_table_card(title="Best Ears", caption="Stations consistently decoding weakest
+                    signals (minimum 3 spots), ranked by mean SNR.",
+                    headers=["Call Sign", "Distance (km)", "Spots", "Mean SNR", "Best SNR", "Worst SNR"],
+                    rows=tx_best_ears_list) }}
+                </div>
+                <div id="bestears-rx" style="display:none">
+                    {{ macros.render_table_card(title="Best Transmitters", caption="Strongest signals received
+                    (minimum 3 spots), ranked by mean SNR — reflects their TX power and antenna, not your RX capability.",
+                    headers=["Call Sign", "Distance (km)", "Spots", "Mean SNR", "Best SNR", "Worst SNR"],
+                    rows=rx_best_ears_list) }}
+                </div>
+                {% else %}
                 {{ macros.render_table_card(title="Best Ears", caption="Stations consistently decoding weakest
                 signals (minimum 3 spots), ranked by mean SNR.",
                 headers=["Call Sign", "Distance (km)", "Spots", "Mean SNR", "Best SNR", "Worst SNR"],
                 rows=best_ears_list) }}
+                {% endif %}
             </div>
             <div class="col-md-6 mb-4">
+                {% if mode == 'both' %}
+                {{ macros.render_table_toggle(table_id="reliable") }}
+                <div id="reliable-tx">
+                    {{ macros.render_table_card(title="Most Reliable Paths", caption="Most consistent signal paths
+                    (minimum 3 spots), ranked by SNR range.",
+                    headers=["Call Sign", "Distance (km)", "Spots", "Mean SNR", "Best SNR", "Worst SNR", "Range"],
+                    rows=tx_reliable_paths_list) }}
+                </div>
+                <div id="reliable-rx" style="display:none">
+                    {{ macros.render_table_card(title="Most Reliable Paths", caption="Most consistent signal paths
+                    received (minimum 3 spots), ranked by SNR range.",
+                    headers=["Call Sign", "Distance (km)", "Spots", "Mean SNR", "Best SNR", "Worst SNR", "Range"],
+                    rows=rx_reliable_paths_list) }}
+                </div>
+                {% else %}
                 {{ macros.render_table_card(title="Most Reliable Paths", caption="Most consistent signal paths
                 (minimum 3 spots), ranked by SNR range.",
                 headers=["Call Sign", "Distance (km)", "Spots", "Mean SNR", "Best SNR", "Worst SNR", "Range"],
                 rows=reliable_paths_list) }}
+                {% endif %}
             </div>
         </div>
         {% set has_unknown_country = (callSignList | selectattr('unknown_country') | list | length > 0)
             or (distanceList | selectattr('unknown_country') | list | length > 0)
             or (best_ears_list | selectattr('unknown_country') | list | length > 0)
-            or (reliable_paths_list | selectattr('unknown_country') | list | length > 0) %}
+            or (reliable_paths_list | selectattr('unknown_country') | list | length > 0)
+            or (rx_callSignList | selectattr('unknown_country') | list | length > 0)
+            or (rx_distanceList | selectattr('unknown_country') | list | length > 0)
+            or (rx_best_ears_list | selectattr('unknown_country') | list | length > 0)
+            or (rx_reliable_paths_list | selectattr('unknown_country') | list | length > 0) %}
         {% if has_unknown_country %}
         <p class="text-muted small">* Callsigns marked unknown could not be resolved to a country —
             may be SWL stations or non-standard identifiers</p>
@@ -277,6 +367,23 @@
   {{ super() }}
   <script>
   {{ map_script_html | safe }}
+  </script>
+  <script>
+  function showTable(tableName, viewMode) {
+    var txEl = document.getElementById(tableName + '-tx');
+    var rxEl = document.getElementById(tableName + '-rx');
+    // "both" is a documented placeholder showing the TX dataset until a
+    // true combined Analysis view is implemented (see docs/ROADMAP.md).
+    if (txEl) txEl.style.display = (viewMode === 'rx') ? 'none' : '';
+    if (rxEl) rxEl.style.display = (viewMode === 'rx') ? '' : 'none';
+
+    var group = document.getElementById(tableName + '-toggle');
+    if (group) {
+      group.querySelectorAll('button').forEach(function (btn) {
+        btn.classList.toggle('active', btn.dataset.mode === viewMode);
+      });
+    }
+  }
   </script>
   <script>
   var wsprLegendAdded = false;

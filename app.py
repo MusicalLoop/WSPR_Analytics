@@ -229,6 +229,106 @@ def build_chart_series(result):
 
     return series
 
+def build_analysis_tables(result, top_stations_count, country_by_call):
+    """
+    Builds the same enriched, capped Analysis-tab tables (call sign list,
+    distance list, best ears, reliable paths) that the dashboard route
+    builds in-place for the primary dataset, but for an arbitrary
+    fetch_and_analyse() result dict, working on copies so the original
+    result's lists are left untouched. Used to build the RX-side (and,
+    for Both mode, TX-side) Analysis tab tables.
+    """
+    if not result:
+        return [], [], [], []
+
+    callSignList = [dict(row) for row in result['callSignList']]
+    distanceList = [dict(row) for row in result['distanceList']]
+    raw_data = result['raw_data']
+
+    if top_stations_count > 0:
+        callSignList = callSignList[:top_stations_count]
+        distanceList = distanceList[:top_stations_count]
+
+    for row in callSignList:
+        row['distance'] = 0
+        row['unknown_country'] = False
+    for row in distanceList:
+        row['best_snr'] = 'N/A'
+        row['mean_snr'] = 'N/A'
+        row['unknown_country'] = False
+
+    best_ears_list = []
+    reliable_paths_list = []
+
+    if raw_data is None:
+        return callSignList, distanceList, best_ears_list, reliable_paths_list
+
+    try:
+        distance_mode_lookup = (
+            raw_data.groupby('rx_sign')['distance']
+            .apply(lambda s: s.mode().iloc[0])
+            .to_dict()
+        )
+        snr_stats = raw_data.groupby('rx_sign')['snr'].agg(['max', 'mean'])
+
+        for row in callSignList:
+            rx_sign = row['rx_sign']
+            row['distance'] = distance_mode_lookup.get(rx_sign, 0)
+            row['unknown_country'] = country_by_call.get(rx_sign, 'Unknown') == 'Unknown'
+            if row['unknown_country']:
+                row['rx_sign'] = f"{rx_sign}*"
+
+        for row in distanceList:
+            rx_sign = row['rx_sign']
+            if rx_sign in snr_stats.index:
+                row['best_snr'] = format_snr(snr_stats.loc[rx_sign, 'max'], decimals=0) or 'N/A'
+                row['mean_snr'] = format_snr(snr_stats.loc[rx_sign, 'mean'], decimals=1) or 'N/A'
+            row['unknown_country'] = country_by_call.get(rx_sign, 'Unknown') == 'Unknown'
+            if row['unknown_country']:
+                row['rx_sign'] = f"{rx_sign}*"
+    except Exception as e:
+        logger.warning(f"Failed to enrich call sign / distance tables: {e}")
+
+    try:
+        station_groups = raw_data.groupby('rx_sign')
+        station_stats = station_groups['snr'].agg(spots='count', mean_snr='mean', best_snr='max', worst_snr='min')
+        station_stats = station_stats[station_stats['spots'] >= 3]
+        station_stats['distance'] = station_groups['distance'].apply(lambda s: s.mode().iloc[0])
+        station_stats['snr_range_value'] = (station_stats['best_snr'] - station_stats['worst_snr']).round().astype(int)
+
+        best_ears_df = station_stats.sort_values(by='mean_snr', ascending=True).head(15)
+        best_ears_list = [
+            {
+                'call_sign': f"{rx_sign}*" if country_by_call.get(rx_sign, 'Unknown') == 'Unknown' else rx_sign,
+                'distance': int(row['distance']),
+                'spots': int(row['spots']),
+                'mean_snr': format_snr(row['mean_snr'], decimals=1),
+                'best_snr': format_snr(row['best_snr'], decimals=0),
+                'worst_snr': format_snr(row['worst_snr'], decimals=0),
+                'unknown_country': country_by_call.get(rx_sign, 'Unknown') == 'Unknown',
+            }
+            for rx_sign, row in best_ears_df.iterrows()
+        ]
+
+        reliable_df = station_stats.sort_values(by='snr_range_value', ascending=True).head(15)
+        reliable_paths_list = [
+            {
+                'call_sign': f"{rx_sign}*" if country_by_call.get(rx_sign, 'Unknown') == 'Unknown' else rx_sign,
+                'distance': int(row['distance']),
+                'spots': int(row['spots']),
+                'mean_snr': format_snr(row['mean_snr'], decimals=1),
+                'best_snr': format_snr(row['best_snr'], decimals=0),
+                'worst_snr': format_snr(row['worst_snr'], decimals=0),
+                'range': f"{int(row['snr_range_value'])} dB",
+                'unknown_country': country_by_call.get(rx_sign, 'Unknown') == 'Unknown',
+            }
+            for rx_sign, row in reliable_df.iterrows()
+        ]
+    except Exception as e:
+        logger.warning(f"Failed to compute best ears / reliable paths tables: {e}")
+
+    return callSignList, distanceList, best_ears_list, reliable_paths_list
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -427,8 +527,6 @@ def dashboard():
     if top_stations_count > 0:
         callSignList = callSignList[:top_stations_count]
         distanceList = distanceList[:top_stations_count]
-        if rx_result:
-            rx_result['distanceList'] = rx_result['distanceList'][:top_stations_count]
 
     for row in callSignList:
         row['distance'] = 0
@@ -546,6 +644,21 @@ def dashboard():
             ]
         except Exception as e:
             logger.warning(f"Failed to compute best ears / reliable paths tables: {e}")
+
+    # Both mode: alias the primary (TX) Analysis tab tables under tx_* names
+    # and build the matching RX-side tables, so the Analysis tab can offer
+    # per-card TX/RX selectors. In single TX/RX mode these are unused by
+    # the template.
+    tx_hourlyList = hourlyList
+    tx_callSignList = callSignList
+    tx_distanceList = distanceList
+    tx_best_ears_list = best_ears_list
+    tx_reliable_paths_list = reliable_paths_list
+
+    rx_callSignList, rx_distanceList, rx_best_ears_list, rx_reliable_paths_list = build_analysis_tables(
+        rx_result, top_stations_count, rx_result['country_by_call'] if rx_result else {}
+    )
+    rx_hourlyList = rx_result['hourlyList'] if rx_result else []
 
     if raw_data is not None:
         try:
@@ -892,8 +1005,8 @@ def dashboard():
         mode=mode,
         tx_summaryData=tx_result['summaryData'] if tx_result else None,
         rx_summaryData=rx_result['summaryData'] if rx_result else None,
-        tx_distanceList=tx_result['distanceList'] if tx_result else [],
-        rx_distanceList=rx_result['distanceList'] if rx_result else [],
+        tx_distanceList=tx_distanceList,
+        rx_distanceList=rx_distanceList,
         tx_countryList=tx_result['countryList'] if tx_result else [],
         rx_countryList=rx_result['countryList'] if rx_result else [],
         tx_best_snr_value=best_snr_value if mode == 'both' else None,
@@ -918,7 +1031,15 @@ def dashboard():
         tx_azimuth_chart_data=tx_azimuth_chart_data,
         rx_azimuth_chart_data=rx_azimuth_chart_data,
         tx_propagation_chart_data=tx_propagation_chart_data,
-        rx_propagation_chart_data=rx_propagation_chart_data
+        rx_propagation_chart_data=rx_propagation_chart_data,
+        tx_hourlyList=tx_hourlyList,
+        rx_hourlyList=rx_hourlyList,
+        tx_callSignList=tx_callSignList,
+        rx_callSignList=rx_callSignList,
+        tx_best_ears_list=tx_best_ears_list,
+        rx_best_ears_list=rx_best_ears_list,
+        tx_reliable_paths_list=tx_reliable_paths_list,
+        rx_reliable_paths_list=rx_reliable_paths_list
     )
 
 RAW_DATA_CSV_PATH = 'data/WSPR_Analytics.csv'

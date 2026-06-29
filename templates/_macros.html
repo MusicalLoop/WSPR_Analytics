@@ -1,5 +1,17 @@
 {# _macros.html #}
 
+{% macro render_table_toggle(table_id) %}
+<div class="btn-group btn-group-sm mb-2" id="{{ table_id }}-toggle" role="group">
+    <button type="button" class="btn btn-outline-primary active" data-mode="tx"
+            onclick="showTable('{{ table_id }}', 'tx')">TX</button>
+    <button type="button" class="btn btn-outline-primary" data-mode="rx"
+            onclick="showTable('{{ table_id }}', 'rx')">RX</button>
+    <button type="button" class="btn btn-outline-primary" data-mode="both"
+            onclick="showTable('{{ table_id }}', 'both')"
+            title="Both currently shows the TX dataset — a combined view is a planned enhancement">Both*</button>
+</div>
+{% endmacro %}
+
 {% macro render_table_card(title, caption, headers, rows, time_format=None) %}
 <div class="card h-100 shadow-sm">
     <div class="card-header">

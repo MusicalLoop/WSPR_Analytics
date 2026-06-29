@@ -136,3 +136,4 @@ for full detail on each item.
 | visualise route is a stub | Resolved by Dashboard redesign |
 | getCountries() slow on Pi Zero 2W | Resolved — caching fix and moved to A7-Mint |
 | WSPR_Analytics not suitable for Pi Zero 2W | Resolved — moved to A7-Mint |
+| Analysis tab "Both*" shows TX data only | Both-mode table toggles offer TX/RX/Both, but "Both" is a placeholder showing the TX dataset — a true combined/merged table view is deferred |
