@@ -40,6 +40,7 @@
 | TX/RX dual mode Phase 6 | Both mode charts dual datasets | 2c31ca0 |
 | TX/RX dual mode Phase 7 | Both mode Analysis combined tables, sortable | add4656 + 884d890 |
 | TX/RX dual mode Phase 8 | Both mode animation TX/RX/Both dataset selector | 924fbef |
+| Share card RX/Both adaptation | Update PNG export for RX and Both modes | d6cbde8 |
 
 ### Dashboard redesign scope
 
@@ -117,7 +118,6 @@ for full detail on each item.
 | Lazy-load Folium map | Build map only when Map tab first opened | Medium |
 | Cache CSV between animation frames | Avoid re-parsing on every frame | Medium |
 | QRZ.com integration | Receiver details in map popups and tables | High |
-| Share card RX/Both adaptation | Update PNG export for RX and Both modes | Medium |
 | Best Ears / Most Reliable combined view | True combined analysis for Both mode | Medium |
 
 ---
